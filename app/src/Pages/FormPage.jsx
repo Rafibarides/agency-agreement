@@ -175,8 +175,8 @@ const FormPage = () => {
       )}
 
       <form onSubmit={handleSubmit}>
-        {/* Personal Information */}
         <div className="form-section">
+          {/* Personal Information */}
           <h2 className="form-section-title">
             <FontAwesomeIcon icon={faUser} />
             Personal Information
@@ -223,26 +223,27 @@ const FormPage = () => {
           </div>
 
           <div className="checkbox-group">
-            <label 
+            <div 
               className={`checkbox-item ${formData.hasDifferentTrainingId ? 'checked' : ''}`}
               onClick={() => setFormData(prev => ({ 
                 ...prev, 
                 hasDifferentTrainingId: !prev.hasDifferentTrainingId 
               }))}
+              role="checkbox"
+              aria-checked={formData.hasDifferentTrainingId}
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && setFormData(prev => ({ 
+                ...prev, 
+                hasDifferentTrainingId: !prev.hasDifferentTrainingId 
+              }))}
             >
-              <input 
-                type="checkbox" 
-                className="checkbox-input"
-                checked={formData.hasDifferentTrainingId}
-                readOnly
-              />
               <span className="checkbox-custom">
                 <FontAwesomeIcon icon={faCheck} size="sm" />
               </span>
               <span className="checkbox-label">
                 Worker ID is different from Training Worker ID
               </span>
-            </label>
+            </div>
           </div>
 
           {formData.hasDifferentTrainingId && (
@@ -258,11 +259,9 @@ const FormPage = () => {
               />
             </div>
           )}
-        </div>
 
-        {/* Property Acknowledgement */}
-        <div className="form-section">
-          <h2 className="form-section-title">
+          {/* Property Acknowledgement */}
+          <h2 className="form-section-title" style={{ marginTop: '2rem' }}>
             <FontAwesomeIcon icon={faLaptop} />
             Acknowledgement of Received Property
           </h2>
@@ -273,21 +272,15 @@ const FormPage = () => {
 
           <div className="checkbox-group">
             {PROPERTY_ITEMS.map(item => (
-              <label 
+              <div 
                 key={item.id}
                 className={`checkbox-item ${formData[item.id] ? 'checked' : ''}`}
-                onClick={(e) => {
-                  if (e.target.tagName !== 'INPUT') {
-                    handlePropertyToggle(item.id);
-                  }
-                }}
+                onClick={() => handlePropertyToggle(item.id)}
+                role="checkbox"
+                aria-checked={formData[item.id]}
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && handlePropertyToggle(item.id)}
               >
-                <input 
-                  type="checkbox" 
-                  className="checkbox-input"
-                  checked={formData[item.id]}
-                  readOnly
-                />
                 <span className="checkbox-custom">
                   <FontAwesomeIcon icon={faCheck} size="sm" />
                 </span>
@@ -302,11 +295,10 @@ const FormPage = () => {
                       onClick={(e) => e.stopPropagation()}
                       className="form-input inline-input"
                       placeholder={item.placeholder}
-                      style={{ marginTop: '0.5rem', display: 'block' }}
                     />
                   )}
                 </span>
-              </label>
+              </div>
             ))}
           </div>
 
@@ -333,30 +325,29 @@ const FormPage = () => {
               placeholder="Enter Esper identifier code"
             />
           </div>
-        </div>
 
-        {/* Device Exchange */}
-        <div className="form-section">
-          <h2 className="form-section-title">
+          {/* Device Exchange */}
+          <h2 className="form-section-title" style={{ marginTop: '2rem' }}>
             <FontAwesomeIcon icon={faExchangeAlt} />
             Device Exchange
           </h2>
 
           <div className="checkbox-group">
-            <label 
+            <div 
               className={`checkbox-item ${formData.exchangeDevice ? 'checked' : ''}`}
               onClick={() => setFormData(prev => ({ 
                 ...prev, 
                 exchangeDevice: !prev.exchangeDevice,
                 ...(!prev.exchangeDevice ? {} : { returningDeviceName: '', returningSerial: '' })
               }))}
+              role="checkbox"
+              aria-checked={formData.exchangeDevice}
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && setFormData(prev => ({ 
+                ...prev, 
+                exchangeDevice: !prev.exchangeDevice
+              }))}
             >
-              <input 
-                type="checkbox" 
-                className="checkbox-input"
-                checked={formData.exchangeDevice}
-                readOnly
-              />
               <span className="checkbox-custom">
                 <FontAwesomeIcon icon={faCheck} size="sm" />
               </span>
@@ -364,7 +355,7 @@ const FormPage = () => {
                 I want to exchange a device
                 <small>Check this if you are returning a device</small>
               </span>
-            </label>
+            </div>
           </div>
 
           {formData.exchangeDevice && (
@@ -393,42 +384,36 @@ const FormPage = () => {
               </div>
             </>
           )}
-        </div>
 
-        {/* Agreements */}
-        <div className="form-section">
-          <h2 className="form-section-title">
+          {/* Agreements */}
+          <h2 className="form-section-title" style={{ marginTop: '2rem' }}>
             <FontAwesomeIcon icon={faIdCard} />
             Terms and Agreements
           </h2>
 
           <div className="checkbox-group" style={{ flexDirection: 'column' }}>
             {AGREEMENTS.map(agreement => (
-              <label 
+              <div 
                 key={agreement.id}
                 className={`checkbox-item agreement-checkbox ${formData[agreement.id] ? 'checked' : ''}`}
                 onClick={() => handleAgreementToggle(agreement.id)}
+                role="checkbox"
+                aria-checked={formData[agreement.id]}
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && handleAgreementToggle(agreement.id)}
               >
-                <input 
-                  type="checkbox" 
-                  className="checkbox-input"
-                  checked={formData[agreement.id]}
-                  readOnly
-                />
                 <span className="checkbox-custom">
                   <FontAwesomeIcon icon={faCheck} size="sm" />
                 </span>
                 <span className="checkbox-label">
                   <strong style={{ color: colors.accentPink }}>I agree:</strong> {agreement.text}
                 </span>
-              </label>
+              </div>
             ))}
           </div>
-        </div>
 
-        {/* Signatures */}
-        <div className="form-section">
-          <h2 className="form-section-title">
+          {/* Signatures */}
+          <h2 className="form-section-title" style={{ marginTop: '2rem' }}>
             <FontAwesomeIcon icon={faFileSignature} />
             Signatures
           </h2>
@@ -446,7 +431,6 @@ const FormPage = () => {
 
           <SignaturePad
             label="Employee Signature"
-            value={formData.employeeSignature}
             onChange={(value) => handleSignatureChange('employeeSignature', value)}
           />
 
@@ -463,31 +447,30 @@ const FormPage = () => {
 
           <SignaturePad
             label="Supervisor Signature"
-            value={formData.supervisorSignature}
             onChange={(value) => handleSignatureChange('supervisorSignature', value)}
           />
-        </div>
 
-        {/* Submit Button */}
-        <div style={{ textAlign: 'center', marginTop: '2rem' }}>
-          <button 
-            type="submit" 
-            className="btn btn-primary"
-            disabled={submitting}
-            style={{ minWidth: '200px' }}
-          >
-            {submitting ? (
-              <>
-                <FontAwesomeIcon icon={faSpinner} spin />
-                Submitting...
-              </>
-            ) : (
-              <>
-                <FontAwesomeIcon icon={faPaperPlane} />
-                Submit Agreement
-              </>
-            )}
-          </button>
+          {/* Submit Button */}
+          <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+            <button 
+              type="submit" 
+              className="btn btn-primary"
+              disabled={submitting}
+              style={{ minWidth: '200px' }}
+            >
+              {submitting ? (
+                <>
+                  <FontAwesomeIcon icon={faSpinner} spin />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <FontAwesomeIcon icon={faPaperPlane} />
+                  Submit Agreement
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </form>
 
@@ -503,4 +486,3 @@ const FormPage = () => {
 };
 
 export default FormPage;
-

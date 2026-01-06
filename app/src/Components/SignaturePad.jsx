@@ -1,9 +1,9 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faUndo } from '@fortawesome/free-solid-svg-icons';
 import colors from '../utils/colors';
 
-const SignaturePad = ({ label, value, onChange }) => {
+const SignaturePad = ({ label, onChange }) => {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [paths, setPaths] = useState([]);
@@ -25,15 +25,15 @@ const SignaturePad = ({ label, value, onChange }) => {
     }).filter(d => d).join(' ');
   }, []);
 
-  // Redraw canvas when paths change
-  useEffect(() => {
+  // Redraw canvas
+  const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    ctx.strokeStyle = colors.accentPink;
+    ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -49,45 +49,7 @@ const SignaturePad = ({ label, value, onChange }) => {
       }
       ctx.stroke();
     });
-
-    // Update SVG path string
-    const svgPath = pathsToSvgString(paths);
-    setHasSignature(paths.length > 0 && paths.some(p => p.length > 0));
-    if (onChange) {
-      onChange(svgPath);
-    }
-  }, [paths, onChange, pathsToSvgString]);
-
-  // Parse value prop into paths if provided
-  useEffect(() => {
-    if (value && value !== pathsToSvgString(paths)) {
-      // Parse SVG path back into points
-      const parsedPaths = [];
-      const pathCommands = value.match(/M[^M]*/g) || [];
-      
-      pathCommands.forEach(cmd => {
-        const points = [];
-        const coords = cmd.match(/[\d.]+/g);
-        
-        if (coords) {
-          for (let i = 0; i < coords.length; i += 2) {
-            points.push({
-              x: parseFloat(coords[i]),
-              y: parseFloat(coords[i + 1])
-            });
-          }
-        }
-        
-        if (points.length > 0) {
-          parsedPaths.push(points);
-        }
-      });
-      
-      if (parsedPaths.length > 0) {
-        setPaths(parsedPaths);
-      }
-    }
-  }, []);
+  }, [paths]);
 
   const getCoordinates = (e) => {
     const canvas = canvasRef.current;
@@ -129,7 +91,7 @@ const SignaturePad = ({ label, value, onChange }) => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     
-    ctx.strokeStyle = colors.accentPink;
+    ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -148,7 +110,39 @@ const SignaturePad = ({ label, value, onChange }) => {
     
     setIsDrawing(false);
     if (currentPath.length > 1) {
-      setPaths(prev => [...prev, currentPath]);
+      const newPaths = [...paths, currentPath];
+      setPaths(newPaths);
+      setHasSignature(true);
+      
+      // Notify parent of change
+      if (onChange) {
+        const svgPath = pathsToSvgString(newPaths);
+        onChange(svgPath);
+      }
+      
+      // Redraw with new paths
+      setTimeout(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        
+        newPaths.forEach(path => {
+          if (path.length === 0) return;
+          ctx.beginPath();
+          ctx.moveTo(path[0].x, path[0].y);
+          for (let i = 1; i < path.length; i++) {
+            ctx.lineTo(path[i].x, path[i].y);
+          }
+          ctx.stroke();
+        });
+      }, 0);
     }
     setCurrentPath([]);
   };
@@ -156,6 +150,16 @@ const SignaturePad = ({ label, value, onChange }) => {
   const clear = () => {
     setPaths([]);
     setCurrentPath([]);
+    setHasSignature(false);
+    
+    // Clear canvas
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    // Notify parent
     if (onChange) {
       onChange('');
     }
@@ -163,7 +167,37 @@ const SignaturePad = ({ label, value, onChange }) => {
 
   const undo = () => {
     if (paths.length > 0) {
-      setPaths(prev => prev.slice(0, -1));
+      const newPaths = paths.slice(0, -1);
+      setPaths(newPaths);
+      setHasSignature(newPaths.length > 0);
+      
+      // Redraw canvas
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        
+        newPaths.forEach(path => {
+          if (path.length === 0) return;
+          ctx.beginPath();
+          ctx.moveTo(path[0].x, path[0].y);
+          for (let i = 1; i < path.length; i++) {
+            ctx.lineTo(path[i].x, path[i].y);
+          }
+          ctx.stroke();
+        });
+      }
+      
+      // Notify parent
+      if (onChange) {
+        const svgPath = pathsToSvgString(newPaths);
+        onChange(svgPath);
+      }
     }
   };
 
@@ -213,4 +247,3 @@ const SignaturePad = ({ label, value, onChange }) => {
 };
 
 export default SignaturePad;
-

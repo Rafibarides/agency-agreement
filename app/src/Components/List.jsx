@@ -4,13 +4,20 @@ import {
   faEye, 
   faSearch,
   faChevronLeft,
-  faChevronRight
+  faChevronRight,
+  faCopy,
+  faCheck,
+  faUndo,
+  faTimes
 } from '@fortawesome/free-solid-svg-icons';
 import Preview from './Preview';
 
 const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
   const [selectedAgreement, setSelectedAgreement] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [copiedField, setCopiedField] = useState(null);
+  const [returnedDevices, setReturnedDevices] = useState({});
+  const [returnModal, setReturnModal] = useState(null);
   const itemsPerPage = 10;
 
   const formatDate = (dateValue) => {
@@ -23,6 +30,38 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
     });
   };
 
+  const copyToClipboard = async (text, fieldId) => {
+    if (!text || text === '-') return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField(null), 1500);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  const handleRowDoubleClick = (agreement) => {
+    setReturnModal(agreement);
+  };
+
+  const markAsReturned = (rowNumber) => {
+    setReturnedDevices(prev => ({
+      ...prev,
+      [rowNumber]: true
+    }));
+    setReturnModal(null);
+  };
+
+  const unmarkAsReturned = (rowNumber) => {
+    setReturnedDevices(prev => {
+      const updated = { ...prev };
+      delete updated[rowNumber];
+      return updated;
+    });
+    setReturnModal(null);
+  };
+
   // Pagination logic
   const totalPages = Math.ceil(agreements.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -32,6 +71,32 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
     }
+  };
+
+  const CopyableCell = ({ value, fieldId }) => {
+    const displayValue = value || '-';
+    const canCopy = value && value !== '-';
+    
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <span>{displayValue}</span>
+        {canCopy && (
+          <button
+            className="copy-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              copyToClipboard(value, fieldId);
+            }}
+            title="Copy to clipboard"
+          >
+            <FontAwesomeIcon 
+              icon={copiedField === fieldId ? faCheck : faCopy} 
+              size="xs"
+            />
+          </button>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -80,25 +145,56 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
                 </tr>
               </thead>
               <tbody>
-                {paginatedAgreements.map((agreement, index) => (
-                  <tr key={agreement.rowNumber || index}>
-                    <td>{formatDate(agreement.Timestamp)}</td>
-                    <td>{agreement.Name || '-'}</td>
-                    <td>{agreement.Title ? agreement.Title.split('–')[0].trim() : '-'}</td>
-                    <td>{agreement['Worker ID'] || '-'}</td>
-                    <td>{agreement['Serial Number'] || '-'}</td>
-                    <td>{agreement['Esper Identifier Code'] || '-'}</td>
-                    <td>
-                      <button 
-                        className="btn btn-secondary btn-small btn-icon"
-                        onClick={() => setSelectedAgreement(agreement)}
-                        title="View Document"
-                      >
-                        <FontAwesomeIcon icon={faEye} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {paginatedAgreements.map((agreement, index) => {
+                  const rowId = agreement.rowNumber || index;
+                  const isReturned = returnedDevices[rowId];
+                  
+                  return (
+                    <tr 
+                      key={rowId}
+                      onDoubleClick={() => handleRowDoubleClick(agreement)}
+                      className={isReturned ? 'row-returned' : ''}
+                      style={{ cursor: 'pointer', position: 'relative' }}
+                    >
+                      <td>{formatDate(agreement.Timestamp)}</td>
+                      <td>
+                        <CopyableCell 
+                          value={agreement.Name} 
+                          fieldId={`name-${rowId}`}
+                        />
+                        {isReturned && (
+                          <span className="returned-badge">Returned</span>
+                        )}
+                      </td>
+                      <td>{agreement.Title ? agreement.Title.split('–')[0].trim() : '-'}</td>
+                      <td>{agreement['Worker ID'] || '-'}</td>
+                      <td>
+                        <CopyableCell 
+                          value={agreement['Serial Number']} 
+                          fieldId={`serial-${rowId}`}
+                        />
+                      </td>
+                      <td>
+                        <CopyableCell 
+                          value={agreement['Esper Identifier Code']} 
+                          fieldId={`esper-${rowId}`}
+                        />
+                      </td>
+                      <td>
+                        <button 
+                          className="btn btn-secondary btn-small btn-icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedAgreement(agreement);
+                          }}
+                          title="View Document"
+                        >
+                          <FontAwesomeIcon icon={faEye} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -150,9 +246,53 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
           onClose={() => setSelectedAgreement(null)} 
         />
       )}
+
+      {/* Return Device Modal */}
+      {returnModal && (
+        <div className="modal-overlay" onClick={() => setReturnModal(null)}>
+          <div 
+            className="return-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="return-modal-header">
+              <h4>Device Return Status</h4>
+              <button 
+                className="modal-close"
+                onClick={() => setReturnModal(null)}
+              >
+                <FontAwesomeIcon icon={faTimes} />
+              </button>
+            </div>
+            <div className="return-modal-body">
+              <p><strong>{returnModal.Name}</strong></p>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                {returnModal['Serial Number'] || 'No serial number'}
+              </p>
+            </div>
+            <div className="return-modal-actions">
+              {returnedDevices[returnModal.rowNumber] ? (
+                <button 
+                  className="btn btn-secondary"
+                  onClick={() => unmarkAsReturned(returnModal.rowNumber)}
+                >
+                  <FontAwesomeIcon icon={faUndo} />
+                  Unmark as Returned
+                </button>
+              ) : (
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => markAsReturned(returnModal.rowNumber)}
+                >
+                  <FontAwesomeIcon icon={faCheck} />
+                  Mark as Returned
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
 
 export default List;
-

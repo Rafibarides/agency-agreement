@@ -35,7 +35,7 @@ const Preview = ({ agreement, onClose }) => {
       >
         <path 
           d={svgPath} 
-          stroke="#E677B3" 
+          stroke="#000000" 
           strokeWidth="2" 
           fill="none"
           strokeLinecap="round"
@@ -70,7 +70,7 @@ const Preview = ({ agreement, onClose }) => {
           <div className="pdf-preview">
             {/* Header */}
             <div className="pdf-header">
-              <img src="/logo.png" alt="Wellbound Logo" className="pdf-logo" />
+              <img src="/logoblack.png" alt="Wellbound Logo" className="pdf-logo" />
               <h1 className="pdf-title">PROPERTY AGREEMENT FORM</h1>
               <div className="pdf-company">
                 {COMPANY_INFO.name}<br />
@@ -105,7 +105,7 @@ const Preview = ({ agreement, onClose }) => {
                 ))}
               </ul>
             ) : (
-              <p style={{ color: '#666' }}>No items recorded</p>
+              <p style={{ color: '#333' }}>No items recorded</p>
             )}
 
             {agreement['Serial Number'] && (
@@ -149,21 +149,21 @@ const Preview = ({ agreement, onClose }) => {
               <div className="pdf-signature-box">
                 <div className="pdf-signature-title">Employee Signature</div>
                 {renderSignature(agreement['Employee Signature'])}
-                <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.5rem' }}>
+                <div style={{ fontSize: '0.875rem', color: '#000', marginTop: '0.5rem' }}>
                   Date: {formatDate(agreement['Employee Signature Date'])}
                 </div>
               </div>
               <div className="pdf-signature-box">
                 <div className="pdf-signature-title">Supervisor Signature</div>
                 {renderSignature(agreement['Supervisor Signature'])}
-                <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.5rem' }}>
+                <div style={{ fontSize: '0.875rem', color: '#000', marginTop: '0.5rem' }}>
                   Date: {formatDate(agreement['Supervisor Signature Date'])}
                 </div>
               </div>
             </div>
 
             {/* Footer */}
-            <div style={{ marginTop: '2rem', textAlign: 'center', fontSize: '0.8rem', color: '#888' }}>
+            <div style={{ marginTop: '2rem', textAlign: 'center', fontSize: '0.8rem', color: '#333' }}>
               Generated on {formatDate(new Date())}
             </div>
           </div>

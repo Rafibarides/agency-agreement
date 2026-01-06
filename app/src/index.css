@@ -10,18 +10,18 @@
   --main-background: #3E0E30;
   --dark-purple: #3E0E30;
   --accent-pink: #E677B3;
-  --soft-pink: #E6B3B8;
+  --soft-pink: #f6deee;
   --muted-purple: #524659;
   --white: #FFFFFF;
-  --salmon-pink: #E69EA5;
+  --salmon-pink: #f6deee;
   
   --glass-background: rgba(82, 70, 89, 0.25);
   --glass-border: rgba(230, 119, 179, 0.3);
-  --glass-highlight: rgba(230, 179, 184, 0.15);
+  --glass-highlight: rgba(246, 222, 238, 0.15);
   --glass-shadow: rgba(62, 14, 48, 0.5);
   
   --text-primary: #FFFFFF;
-  --text-secondary: #E6B3B8;
+  --text-secondary: #f6deee;
   --text-muted: rgba(255, 255, 255, 0.7);
   
   --input-background: rgba(82, 70, 89, 0.4);
@@ -29,7 +29,7 @@
   --input-focus: #E677B3;
   
   --button-primary: #E677B3;
-  --button-primary-hover: #E69EA5;
+  --button-primary-hover: #f6deee;
 }
 
 html {
@@ -166,22 +166,75 @@ a:hover {
 
 /* Print styles */
 @media print {
-  body {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  html, body {
     background: white !important;
-    color: #3E0E30 !important;
+    color: #000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
   }
   
   body::before {
-    display: none;
+    display: none !important;
+  }
+  
+  #root {
+    min-height: auto !important;
+    height: auto !important;
+  }
+  
+  .no-print,
+  .nav-container,
+  .modal-header {
+    display: none !important;
+  }
+  
+  .modal-overlay {
+    position: absolute !important;
+    background: white !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  
+  .modal-content {
+    position: static !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    max-width: none !important;
+    width: 100% !important;
+  }
+  
+  .modal-body {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  
+  .pdf-preview {
+    background: white !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+  
+  .pdf-signature-box {
+    page-break-inside: avoid;
   }
   
   .glass, .glass-subtle {
     background: white !important;
     backdrop-filter: none !important;
-    border: 1px solid #E677B3 !important;
-  }
-  
-  .no-print {
-    display: none !important;
+    border: none !important;
   }
 }

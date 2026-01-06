@@ -148,8 +148,8 @@
 
 /* Checkbox Styles */
 .checkbox-group {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.75rem;
 }
 
@@ -163,8 +163,7 @@
   border: 1px solid transparent;
   border-radius: 10px;
   transition: all 0.2s ease;
-  flex: 1;
-  min-width: 180px;
+  word-break: break-word;
 }
 
 .checkbox-item:hover {
@@ -178,7 +177,7 @@
 }
 
 .checkbox-item.full-width {
-  flex: 1 1 100%;
+  grid-column: 1 / -1;
 }
 
 .checkbox-input {
@@ -218,6 +217,8 @@
   font-size: 0.95rem;
   color: var(--text-primary);
   line-height: 1.5;
+  flex: 1;
+  min-width: 0;
 }
 
 .checkbox-label small {
@@ -229,8 +230,7 @@
 
 /* Agreement Checkbox */
 .agreement-checkbox {
-  flex: 1 1 100%;
-  min-width: 100%;
+  grid-column: 1 / -1;
   padding: 1rem 1.25rem;
 }
 
@@ -240,13 +240,10 @@
 
 /* Inline Input */
 .inline-input {
-  width: auto;
-  min-width: 150px;
-  max-width: 200px;
+  width: 100%;
   padding: 0.5rem 0.75rem;
-  margin-left: 0.5rem;
-  display: inline-block;
-  vertical-align: middle;
+  margin-top: 0.5rem;
+  display: block;
 }
 
 /* Buttons */
@@ -462,6 +459,93 @@
   color: var(--text-primary);
 }
 
+.data-table tr.row-returned {
+  background: rgba(76, 175, 80, 0.08);
+}
+
+.data-table tr.row-returned:hover {
+  background: rgba(76, 175, 80, 0.12);
+}
+
+/* Copy Button */
+.copy-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+  opacity: 0.5;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.copy-btn:hover {
+  opacity: 1;
+  color: var(--accent-pink);
+}
+
+/* Returned Badge */
+.returned-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(76, 175, 80, 0.2);
+  color: #81C784;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+/* Return Modal */
+.return-modal {
+  background: var(--dark-purple);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  width: 320px;
+  max-width: 90vw;
+  overflow: hidden;
+}
+
+.return-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.return-modal-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.return-modal-body {
+  padding: 1.25rem;
+}
+
+.return-modal-body p {
+  margin: 0;
+  color: var(--white);
+}
+
+.return-modal-actions {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--glass-border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.return-modal-actions .btn {
+  width: 100%;
+}
+
 /* Search Bar */
 .search-container {
   display: flex;
@@ -596,7 +680,7 @@
 /* PDF Preview */
 .pdf-preview {
   background: white;
-  color: #3E0E30;
+  color: #000;
   padding: 3rem;
   border-radius: 8px;
   font-family: 'Outfit', sans-serif;
@@ -606,7 +690,7 @@
   text-align: center;
   margin-bottom: 2rem;
   padding-bottom: 1.5rem;
-  border-bottom: 2px solid #E677B3;
+  border-bottom: 2px solid #000;
 }
 
 .pdf-logo {
@@ -617,45 +701,46 @@
 .pdf-title {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #3E0E30;
+  color: #000;
   margin-bottom: 0.5rem;
 }
 
 .pdf-company {
   font-size: 0.85rem;
-  color: #524659;
+  color: #000;
   line-height: 1.6;
 }
 
 .pdf-field {
   margin-bottom: 1rem;
+  color: #000;
 }
 
 .pdf-field-label {
   font-weight: 600;
-  color: #3E0E30;
+  color: #000;
   display: inline;
 }
 
 .pdf-section-title {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #E677B3;
+  color: #000;
   margin: 1.5rem 0 1rem 0;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid #E6B3B8;
+  border-bottom: 1px solid #000;
 }
 
 .pdf-signature-box {
   margin-top: 1.5rem;
   padding: 1rem;
-  border: 1px solid #E6B3B8;
-  border-radius: 8px;
+  border: none;
+  border-bottom: 1px solid #ccc;
 }
 
 .pdf-signature-title {
   font-weight: 600;
-  color: #3E0E30;
+  color: #000;
   margin-bottom: 0.5rem;
 }
 
@@ -669,13 +754,14 @@
   margin-bottom: 0.75rem;
   padding-left: 1.5rem;
   position: relative;
+  color: #000;
 }
 
 .pdf-agreement-item::before {
   content: '\2713';
   position: absolute;
   left: 0;
-  color: #E677B3;
+  color: #000;
   font-weight: bold;
 }
 
@@ -706,8 +792,8 @@
     padding: 1.25rem;
   }
   
-  .checkbox-item {
-    min-width: 100%;
+  .checkbox-group {
+    grid-template-columns: 1fr;
   }
   
   .stats-grid {
@@ -729,5 +815,88 @@
   
   .pdf-preview {
     padding: 1.5rem;
+  }
+}
+
+/* Print Styles */
+@media print {
+  @page {
+    margin: 0.5in;
+    size: letter;
+  }
+  
+  .app-container,
+  .page-container {
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: auto !important;
+  }
+  
+  .nav-container {
+    display: none !important;
+  }
+  
+  .modal-overlay {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: auto !important;
+    background: white !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    backdrop-filter: none !important;
+  }
+  
+  .modal-content {
+    position: static !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+    border: none !important;
+    border-radius: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  .modal-header {
+    display: none !important;
+  }
+  
+  .modal-body {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  
+  .pdf-preview {
+    padding: 0 !important;
+    background: white !important;
+    border-radius: 0 !important;
+    color: #000 !important;
+    overflow: visible !important;
+  }
+  
+  .pdf-header {
+    border-bottom-color: #000 !important;
+  }
+  
+  .pdf-section-title {
+    border-bottom-color: #000 !important;
+    color: #000 !important;
+  }
+  
+  .pdf-signature-box {
+    border: none !important;
+    border-bottom: 1px solid #ccc !important;
+    page-break-inside: avoid !important;
+  }
+  
+  .pdf-logo {
+    max-height: 50px !important;
   }
 }
