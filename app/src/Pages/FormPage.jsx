@@ -8,7 +8,8 @@ import {
   faExchangeAlt,
   faCheck,
   faPaperPlane,
-  faSpinner
+  faSpinner,
+  faEnvelope
 } from '@fortawesome/free-solid-svg-icons';
 import SignaturePad from '../Components/SignaturePad';
 import { 
@@ -45,7 +46,9 @@ const FormPage = () => {
     employeeSignatureDate: today,
     employeeSignature: '',
     supervisorSignatureDate: today,
-    supervisorSignature: ''
+    supervisorSignature: '',
+    sendCopyToEmployee: false,
+    employeeEmail: ''
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -102,6 +105,15 @@ const FormPage = () => {
     }
     if (!formData.employeeSignature) return 'Employee signature is required';
     if (!formData.supervisorSignature) return 'Supervisor signature is required';
+    if (formData.sendCopyToEmployee && !formData.employeeEmail.trim()) {
+      return 'Please enter your email address to receive a copy';
+    }
+    if (formData.sendCopyToEmployee && formData.employeeEmail.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.employeeEmail.trim())) {
+        return 'Please enter a valid email address';
+      }
+    }
     return null;
   };
 
@@ -128,7 +140,10 @@ const FormPage = () => {
       const result = await submitAgreement(submitData);
       
       if (result.success) {
-        setMessage({ type: 'success', text: 'Agreement submitted successfully!' });
+        const emailMsg = submitData.sendCopyToEmployee 
+          ? ' A copy has been sent to your email.' 
+          : '';
+        setMessage({ type: 'success', text: `Agreement submitted successfully!${emailMsg}` });
         // Reset form
         setFormData({
           name: '',
@@ -152,7 +167,9 @@ const FormPage = () => {
           employeeSignatureDate: today,
           employeeSignature: '',
           supervisorSignatureDate: today,
-          supervisorSignature: ''
+          supervisorSignature: '',
+          sendCopyToEmployee: false,
+          employeeEmail: ''
         });
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
@@ -175,7 +192,7 @@ const FormPage = () => {
       )}
 
       <form onSubmit={handleSubmit}>
-        <div className="form-section">
+        <div className="form-section" style={{ marginTop: '1.5rem' }}>
           {/* Personal Information */}
           <h2 className="form-section-title">
             <FontAwesomeIcon icon={faUser} />
@@ -222,7 +239,7 @@ const FormPage = () => {
             />
           </div>
 
-          <div className="checkbox-group">
+          <div className="checkbox-group" style={{ gridTemplateColumns: '1fr' }}>
             <div 
               className={`checkbox-item ${formData.hasDifferentTrainingId ? 'checked' : ''}`}
               onClick={() => setFormData(prev => ({ 
@@ -236,6 +253,7 @@ const FormPage = () => {
                 ...prev, 
                 hasDifferentTrainingId: !prev.hasDifferentTrainingId 
               }))}
+              style={{ whiteSpace: 'nowrap' }}
             >
               <span className="checkbox-custom">
                 <FontAwesomeIcon icon={faCheck} size="sm" />
@@ -449,6 +467,55 @@ const FormPage = () => {
             label="Supervisor Signature"
             onChange={(value) => handleSignatureChange('supervisorSignature', value)}
           />
+
+          {/* Email Copy Option */}
+          <h2 className="form-section-title" style={{ marginTop: '2rem' }}>
+            <FontAwesomeIcon icon={faEnvelope} />
+            Email Notification
+          </h2>
+
+          <div className="checkbox-group" style={{ gridTemplateColumns: '1fr' }}>
+            <div 
+              className={`checkbox-item ${formData.sendCopyToEmployee ? 'checked' : ''}`}
+              onClick={() => setFormData(prev => ({ 
+                ...prev, 
+                sendCopyToEmployee: !prev.sendCopyToEmployee,
+                ...(!prev.sendCopyToEmployee ? {} : { employeeEmail: '' })
+              }))}
+              role="checkbox"
+              aria-checked={formData.sendCopyToEmployee}
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && setFormData(prev => ({ 
+                ...prev, 
+                sendCopyToEmployee: !prev.sendCopyToEmployee
+              }))}
+            >
+              <span className="checkbox-custom">
+                <FontAwesomeIcon icon={faCheck} size="sm" />
+              </span>
+              <span className="checkbox-label">
+                Send a copy of the signed agreement to my email
+              </span>
+            </div>
+          </div>
+
+          {formData.sendCopyToEmployee && (
+            <div className="form-group" style={{ marginTop: '1rem' }}>
+              <label className="form-label">Your Email Address</label>
+              <input
+                type="email"
+                name="employeeEmail"
+                value={formData.employeeEmail}
+                onChange={handleInputChange}
+                className="form-input"
+                placeholder="Enter your email address"
+              />
+              <small style={{ color: colors.textMuted, fontSize: '0.85rem', marginTop: '0.5rem', display: 'block' }}>
+                <FontAwesomeIcon icon={faEnvelope} style={{ marginRight: '0.5rem' }} />
+                A PDF copy of your signed agreement will be sent to this email
+              </small>
+            </div>
+          )}
 
           {/* Submit Button */}
           <div style={{ textAlign: 'center', marginTop: '2rem' }}>
