@@ -488,47 +488,60 @@ function generatePDFHTML(agreement) {
       <style>
         body {
           font-family: Arial, sans-serif;
-          padding: 40px;
+          padding: 30px;
           color: #333;
+          font-size: 12px;
         }
         .header {
           text-align: center;
-          margin-bottom: 30px;
-          border-bottom: 2px solid #3E0E30;
-          padding-bottom: 20px;
+          margin-bottom: 20px;
         }
         .company-info {
           text-align: center;
-          font-size: 12px;
-          margin-top: 10px;
+          font-size: 11px;
+          margin-top: 8px;
         }
         .title {
-          font-size: 20px;
+          font-size: 18px;
           font-weight: bold;
-          margin: 20px 0;
+          margin: 15px 0;
           color: #3E0E30;
         }
         .field {
-          margin: 15px 0;
+          margin: 10px 0;
         }
         .field-label {
           font-weight: bold;
           color: #3E0E30;
         }
         .signature-section {
-          margin-top: 40px;
-          page-break-inside: avoid;
+          margin-top: 25px;
+        }
+        .signatures-row {
+          display: flex;
+          gap: 30px;
         }
         .signature-box {
-          margin: 20px 0;
-          padding: 10px;
-          border: 1px solid #ccc;
+          flex: 1;
+          padding: 8px 0;
         }
-        .signature-image {
-          min-height: 60px;
+        .signature-label {
+          font-weight: bold;
+          margin-bottom: 5px;
+        }
+        .signature-line {
+          border-bottom: 1px solid #333;
+          min-height: 50px;
+          margin-bottom: 5px;
+        }
+        .signature-line img {
+          max-height: 48px;
+        }
+        .signature-date {
+          font-size: 11px;
         }
         .footer {
-          margin-top: 40px;
+          margin-top: 20px;
           text-align: center;
           font-size: 10px;
           color: #666;
@@ -537,7 +550,7 @@ function generatePDFHTML(agreement) {
     </head>
     <body>
       <div class="header">
-        <h1>PROPERTY AGREEMENT FORM</h1>
+        <h1 style="margin: 0; font-size: 20px;">PROPERTY AGREEMENT FORM</h1>
         <div class="company-info">
           <div>${CONFIG.COMPANY_INFO.name}</div>
           <div>${CONFIG.COMPANY_INFO.address}</div>
@@ -568,7 +581,7 @@ function generatePDFHTML(agreement) {
       
       <div class="field">
         <span class="field-label">Devices Received:</span>
-        <ul>
+        <ul style="margin: 5px 0 5px 20px; padding: 0;">
           ${devicesList.map(device => `<li>${device}</li>`).join('')}
         </ul>
       </div>
@@ -588,40 +601,41 @@ function generatePDFHTML(agreement) {
       ${exchangeDevice ? `
       <div class="field">
         <span class="field-label">Exchange Information:</span>
-        <div>Returning Device: ${returningDeviceName}</div>
-        <div>Returning Serial: ${returningSerial}</div>
+        <div style="margin-left: 10px;">Returning Device: ${returningDeviceName}</div>
+        <div style="margin-left: 10px;">Returning Serial: ${returningSerial}</div>
       </div>
       ` : ''}
       
       <div class="title">Agreements</div>
       
-      <div class="field">
+      <div class="field" style="font-size: 11px;">
         ☑ I agree to maintain all Agency property in working condition, and to notify the Agency in the event that the property malfunctions in any way, or if the property is lost or stolen.
       </div>
       
-      <div class="field">
+      <div class="field" style="font-size: 11px;">
         ☑ If there are any items which I do not need, these will be returned immediately to my Supervisor.
       </div>
       
-      <div class="field">
+      <div class="field" style="font-size: 11px;">
         ☑ I have been advised by my Supervisor / Human Resources, that it is my responsibility to return all property to the Agency upon termination of the engagement between myself and the Agency.
       </div>
       
       <div class="signature-section">
-        <div class="signature-box">
-          <div><strong>Employee Signature</strong></div>
-          <div class="signature-image">
-            ${employeeSignature ? `<img src="${svgToDataUrl(employeeSignature)}" style="max-height: 60px;" />` : ''}
+        <div class="signatures-row">
+          <div class="signature-box">
+            <div class="signature-label">Employee Signature</div>
+            <div class="signature-line">
+              ${employeeSignature ? `<img src="${svgToDataUrl(employeeSignature)}" />` : ''}
+            </div>
+            <div class="signature-date">Date: ${formatDate(employeeSignatureDate)}</div>
           </div>
-          <div>Date: ${formatDate(employeeSignatureDate)}</div>
-        </div>
-        
-        <div class="signature-box">
-          <div><strong>Supervisor Signature</strong></div>
-          <div class="signature-image">
-            ${supervisorSignature ? `<img src="${svgToDataUrl(supervisorSignature)}" style="max-height: 60px;" />` : ''}
+          <div class="signature-box">
+            <div class="signature-label">Supervisor Signature</div>
+            <div class="signature-line">
+              ${supervisorSignature ? `<img src="${svgToDataUrl(supervisorSignature)}" />` : ''}
+            </div>
+            <div class="signature-date">Date: ${formatDate(supervisorSignatureDate)}</div>
           </div>
-          <div>Date: ${formatDate(supervisorSignatureDate)}</div>
         </div>
       </div>
       

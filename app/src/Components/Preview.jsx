@@ -52,7 +52,7 @@ const Preview = ({ agreement, onClose }) => {
   const receivedItems = getReceivedItems();
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay print-modal" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header no-print">
           <h3 className="modal-title">Property Agreement Document</h3>
@@ -99,7 +99,7 @@ const Preview = ({ agreement, onClose }) => {
             {/* Received Property */}
             <h3 className="pdf-section-title">Acknowledgement of Received Property</h3>
             {receivedItems.length > 0 ? (
-              <ul style={{ marginLeft: '1.5rem', marginBottom: '1rem' }}>
+              <ul style={{ marginLeft: '1.5rem', marginBottom: '0.75rem' }}>
                 {receivedItems.map((item, idx) => (
                   <li key={idx}>{item}</li>
                 ))}
@@ -144,26 +144,30 @@ const Preview = ({ agreement, onClose }) => {
               I have been advised by my Supervisor / Human Resources, that it is my responsibility to return all property to the Agency upon termination of the engagement between myself and the Agency.
             </div>
 
-            {/* Signatures */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginTop: '2rem' }}>
-              <div className="pdf-signature-box">
-                <div className="pdf-signature-title">Employee Signature</div>
-                {renderSignature(agreement['Employee Signature'])}
-                <div style={{ fontSize: '0.875rem', color: '#000', marginTop: '0.5rem' }}>
+            {/* Signatures - Side by Side to fit on one page */}
+            <div style={{ display: 'flex', gap: '2rem', marginTop: '1.5rem' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: '#000', marginBottom: '0.25rem' }}>Employee Signature</div>
+                <div style={{ borderBottom: '1px solid #333', minHeight: '50px', marginBottom: '0.25rem' }}>
+                  {renderSignature(agreement['Employee Signature'])}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: '#000' }}>
                   Date: {formatDate(agreement['Employee Signature Date'])}
                 </div>
               </div>
-              <div className="pdf-signature-box">
-                <div className="pdf-signature-title">Supervisor Signature</div>
-                {renderSignature(agreement['Supervisor Signature'])}
-                <div style={{ fontSize: '0.875rem', color: '#000', marginTop: '0.5rem' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: '#000', marginBottom: '0.25rem' }}>Supervisor Signature</div>
+                <div style={{ borderBottom: '1px solid #333', minHeight: '50px', marginBottom: '0.25rem' }}>
+                  {renderSignature(agreement['Supervisor Signature'])}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: '#000' }}>
                   Date: {formatDate(agreement['Supervisor Signature Date'])}
                 </div>
               </div>
             </div>
 
             {/* Footer */}
-            <div style={{ marginTop: '2rem', textAlign: 'center', fontSize: '0.8rem', color: '#333' }}>
+            <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '0.75rem', color: '#666' }}>
               Generated on {formatDate(new Date())}
             </div>
           </div>
@@ -174,4 +178,3 @@ const Preview = ({ agreement, onClose }) => {
 };
 
 export default Preview;
-
