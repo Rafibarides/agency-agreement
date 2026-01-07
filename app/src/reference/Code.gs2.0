@@ -15,7 +15,7 @@ const CONFIG = {
   },
   // ADD YOUR ADMIN EMAIL ADDRESSES HERE
   ADMIN_EMAILS: [
-    'rafibarides@gmail.com'
+    'rafibarides@gmail.com',
     // Add more email addresses as needed
   ]
 };
@@ -303,13 +303,18 @@ function adminLogin(data) {
 // ============================================
 
 function sendNotificationEmails(agreementData, rowNumber) {
+  Logger.log('Starting email send process for: ' + agreementData.name);
+  
   const pdfResult = generatePDFBlob(agreementData);
   
   if (!pdfResult.success) {
+    Logger.log('PDF generation failed: ' + pdfResult.error);
     throw new Error('Failed to generate PDF: ' + pdfResult.error);
   }
   
-  const pdfBlob = pdfResult.blob;
+  Logger.log('PDF generated successfully');
+  
+  const pdfBytes = pdfResult.blob.getBytes();
   const filename = pdfResult.filename;
   
   // Send to admin emails
@@ -317,18 +322,26 @@ function sendNotificationEmails(agreementData, rowNumber) {
     const adminSubject = `New Property Agreement Submitted - ${agreementData.name}`;
     const adminBody = generateAdminEmailBody(agreementData);
     
+    Logger.log('Sending to ' + CONFIG.ADMIN_EMAILS.length + ' admin email(s)');
+    
     CONFIG.ADMIN_EMAILS.forEach(email => {
       try {
+        // Create a fresh blob for each email
+        const attachment = Utilities.newBlob(pdfBytes, 'application/pdf', filename);
+        
         MailApp.sendEmail({
           to: email,
           subject: adminSubject,
           body: adminBody,
-          attachments: [pdfBlob.setName(filename)]
+          attachments: [attachment]
         });
+        Logger.log('Successfully sent to admin: ' + email);
       } catch(e) {
         Logger.log('Failed to send to admin email ' + email + ': ' + e.message);
       }
     });
+  } else {
+    Logger.log('No admin emails configured');
   }
   
   // Send to employee if requested
@@ -337,16 +350,22 @@ function sendNotificationEmails(agreementData, rowNumber) {
     const employeeBody = generateEmployeeEmailBody(agreementData);
     
     try {
+      // Create a fresh blob for employee email
+      const attachment = Utilities.newBlob(pdfBytes, 'application/pdf', filename);
+      
       MailApp.sendEmail({
         to: agreementData.employeeEmail,
         subject: employeeSubject,
         body: employeeBody,
-        attachments: [pdfBlob.setName(filename)]
+        attachments: [attachment]
       });
+      Logger.log('Successfully sent to employee: ' + agreementData.employeeEmail);
     } catch(e) {
       Logger.log('Failed to send to employee email: ' + e.message);
     }
   }
+  
+  Logger.log('Email send process completed');
 }
 
 function generateAdminEmailBody(data) {
@@ -750,4 +769,47 @@ function testSearch() {
 
 function testStats() {
   Logger.log(getStatistics());
+}
+
+// Test email sending directly (run this to verify emails work)
+function testEmailSending() {
+  Logger.log('=== EMAIL TEST STARTED ===');
+  Logger.log('Admin emails configured: ' + JSON.stringify(CONFIG.ADMIN_EMAILS));
+  
+  // Check remaining email quota
+  const remainingQuota = MailApp.getRemainingDailyQuota();
+  Logger.log('Remaining daily email quota: ' + remainingQuota);
+  
+  if (remainingQuota <= 0) {
+    Logger.log('ERROR: No email quota remaining!');
+    return;
+  }
+  
+  const testData = {
+    name: 'TEST - Email Test',
+    title: 'Test Title',
+    workerId: '00000',
+    device: true,
+    deviceName: 'Test Device',
+    portableCharger: false,
+    protectiveCover: false,
+    keyboard: false,
+    serialNumber: 'TEST-SERIAL',
+    esperIdentifier: 'TEST-ESPER',
+    exchangeDevice: false,
+    employeeSignature: 'M 10 50 L 100 50 L 150 30',
+    employeeSignatureDate: new Date(),
+    supervisorSignature: 'M 10 50 L 100 50 L 150 70',
+    supervisorSignatureDate: new Date()
+  };
+  
+  try {
+    sendNotificationEmails(testData, 0);
+    Logger.log('=== EMAIL TEST COMPLETED ===');
+    Logger.log('Check your inbox at: ' + CONFIG.ADMIN_EMAILS.join(', '));
+  } catch(e) {
+    Logger.log('=== EMAIL TEST FAILED ===');
+    Logger.log('Error: ' + e.message);
+    Logger.log('Stack: ' + e.stack);
+  }
 }
