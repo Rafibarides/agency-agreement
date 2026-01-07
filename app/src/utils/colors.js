@@ -40,8 +40,12 @@ const colors = {
   // Status colors
   success: '#4CAF50',
   error: '#E57373',
+  errorRed: '#E57373',
   warning: '#FFB74D',
   info: '#E677B3',
+  
+  // Simplified aliases
+  glassBg: 'rgba(82, 70, 89, 0.25)',
   
   // Gradient overlays
   gradientOverlay: 'linear-gradient(135deg, rgba(62, 14, 48, 0.9) 0%, rgba(82, 70, 89, 0.7) 100%)',

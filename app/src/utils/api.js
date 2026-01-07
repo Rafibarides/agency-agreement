@@ -52,6 +52,26 @@ export async function getStatistics() {
   return apiRequest('getStats');
 }
 
+// Verify PIN for APF access
+export async function verifyPin(pin) {
+  return apiRequest('verifyPin', { pin });
+}
+
+// Hold form for signature (submit without signatures)
+export async function holdForSignature(formData) {
+  return apiRequest('holdForSignature', formData);
+}
+
+// Get all unsigned agreements (for APF list)
+export async function getUnsignedAgreements() {
+  return apiRequest('getUnsignedAgreements');
+}
+
+// Update existing agreement with signatures
+export async function updateWithSignatures(formData) {
+  return apiRequest('updateWithSignatures', formData);
+}
+
 // Company information
 export const COMPANY_INFO = {
   name: 'AMBER COURT AT HOME D/B/A WELLBOUND',
@@ -103,6 +123,10 @@ export default {
   getAllAgreements,
   searchAgreements,
   getStatistics,
+  verifyPin,
+  holdForSignature,
+  getUnsignedAgreements,
+  updateWithSignatures,
   COMPANY_INFO,
   TITLE_OPTIONS,
   PROPERTY_ITEMS,

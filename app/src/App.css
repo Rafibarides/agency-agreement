@@ -392,6 +392,19 @@
   color: #E57373;
 }
 
+.message-info {
+  background: rgba(230, 119, 179, 0.15);
+  border: 1px solid rgba(230, 119, 179, 0.3);
+  color: #E677B3;
+}
+
+/* APF List Styles */
+.apf-item:hover {
+  background: rgba(230, 119, 179, 0.1);
+  border-color: var(--accent-pink);
+  transform: translateX(4px);
+}
+
 /* Loading Spinner */
 .loading {
   display: flex;

@@ -3,21 +3,44 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faFileSignature, 
   faShieldAlt, 
-  faChartLine 
+  faChartLine,
+  faClipboardList
 } from '@fortawesome/free-solid-svg-icons';
 import FormPage from './Pages/FormPage';
 import AdminPage from './Pages/AdminPage';
 import Dashboard from './Pages/Dashboard';
+import APFList from './Pages/APFList';
+import PinModal from './Components/PinModal';
 import './App.css';
 
 const PAGES = {
   FORM: 'form',
   ADMIN: 'admin',
-  DASHBOARD: 'dashboard'
+  DASHBOARD: 'dashboard',
+  APF: 'apf'
 };
 
 function App() {
   const [currentPage, setCurrentPage] = useState(PAGES.FORM);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [prefillData, setPrefillData] = useState(null);
+
+  const handleAPFClick = () => {
+    setShowPinModal(true);
+  };
+
+  const handlePinSuccess = () => {
+    setCurrentPage(PAGES.APF);
+  };
+
+  const handleSelectPrefill = (data) => {
+    setPrefillData(data);
+    setCurrentPage(PAGES.FORM);
+  };
+
+  const handleFormReset = () => {
+    setPrefillData(null);
+  };
 
   const renderPage = () => {
     switch (currentPage) {
@@ -25,9 +48,11 @@ function App() {
         return <AdminPage />;
       case PAGES.DASHBOARD:
         return <Dashboard />;
+      case PAGES.APF:
+        return <APFList onSelectAgreement={handleSelectPrefill} />;
       case PAGES.FORM:
       default:
-        return <FormPage />;
+        return <FormPage prefillData={prefillData} onReset={handleFormReset} />;
     }
   };
 
@@ -51,6 +76,13 @@ function App() {
             Form
           </button>
           <button
+            className={`nav-link ${currentPage === PAGES.APF ? 'active' : ''}`}
+            onClick={handleAPFClick}
+          >
+            <FontAwesomeIcon icon={faClipboardList} style={{ marginRight: '0.5rem' }} />
+            APF
+          </button>
+          <button
             className={`nav-link ${currentPage === PAGES.DASHBOARD ? 'active' : ''}`}
             onClick={() => setCurrentPage(PAGES.DASHBOARD)}
           >
@@ -69,6 +101,14 @@ function App() {
 
       {/* Main Content */}
       {renderPage()}
+
+      {/* PIN Modal for APF Access */}
+      <PinModal
+        isOpen={showPinModal}
+        onClose={() => setShowPinModal(false)}
+        onSuccess={handlePinSuccess}
+        title="Enter PIN for APF Access"
+      />
     </div>
   );
 }

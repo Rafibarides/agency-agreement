@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faUser, 
@@ -9,11 +9,16 @@ import {
   faCheck,
   faPaperPlane,
   faSpinner,
-  faEnvelope
+  faEnvelope,
+  faPause,
+  faClipboardList
 } from '@fortawesome/free-solid-svg-icons';
 import SignaturePad from '../Components/SignaturePad';
+import PinModal from '../Components/PinModal';
 import { 
   submitAgreement, 
+  holdForSignature,
+  updateWithSignatures,
   COMPANY_INFO, 
   TITLE_OPTIONS, 
   PROPERTY_ITEMS, 
@@ -21,10 +26,10 @@ import {
 } from '../utils/api';
 import colors from '../utils/colors';
 
-const FormPage = () => {
+const FormPage = ({ prefillData, onReset }) => {
   const today = new Date().toISOString().split('T')[0];
   
-  const [formData, setFormData] = useState({
+  const initialFormState = {
     name: '',
     title: '',
     workerId: '',
@@ -49,10 +54,33 @@ const FormPage = () => {
     supervisorSignature: '',
     sendCopyToEmployee: false,
     employeeEmail: ''
-  });
+  };
 
+  const [formData, setFormData] = useState(initialFormState);
   const [submitting, setSubmitting] = useState(false);
+  const [holdingForSig, setHoldingForSig] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [showHoldPinModal, setShowHoldPinModal] = useState(false);
+  const [isPrefilled, setIsPrefilled] = useState(false);
+
+  // Handle prefillData when coming from APF list
+  useEffect(() => {
+    if (prefillData) {
+      setFormData({
+        ...initialFormState,
+        ...prefillData,
+        employeeSignatureDate: today,
+        supervisorSignatureDate: today,
+        employeeSignature: '',
+        supervisorSignature: ''
+      });
+      setIsPrefilled(true);
+      setMessage({ 
+        type: 'info', 
+        text: 'Form prefilled. Please add signatures to complete.' 
+      });
+    }
+  }, [prefillData]);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -84,7 +112,7 @@ const FormPage = () => {
     }));
   };
 
-  const validateForm = () => {
+  const validateFormForHold = () => {
     if (!formData.name.trim()) return 'Please enter your name';
     if (!formData.title) return 'Please select your title';
     if (!formData.workerId) return 'Please enter your Worker ID';
@@ -103,6 +131,13 @@ const FormPage = () => {
     if (!formData.agreement1 || !formData.agreement2 || !formData.agreement3) {
       return 'Please agree to all terms and conditions';
     }
+    return null;
+  };
+
+  const validateForm = () => {
+    const holdError = validateFormForHold();
+    if (holdError) return holdError;
+    
     if (!formData.employeeSignature) return 'Employee signature is required';
     if (!formData.supervisorSignature) return 'Supervisor signature is required';
     if (formData.sendCopyToEmployee && !formData.employeeEmail.trim()) {
@@ -115,6 +150,53 @@ const FormPage = () => {
       }
     }
     return null;
+  };
+
+  const handleHoldPinSuccess = async () => {
+    setHoldingForSig(true);
+    setMessage({ type: '', text: '' });
+
+    try {
+      const submitData = {
+        ...formData,
+        trainingWorkerId: formData.hasDifferentTrainingId 
+          ? formData.trainingWorkerId 
+          : formData.workerId
+      };
+
+      const result = await holdForSignature(submitData);
+      
+      if (result.success) {
+        setMessage({ type: 'success', text: 'Form held for signature. It can be accessed from the APF menu.' });
+        resetForm();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        setMessage({ type: 'error', text: result.error || 'Failed to hold form' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Network error. Please try again.' });
+    } finally {
+      setHoldingForSig(false);
+    }
+  };
+
+  const handleHoldForSignature = () => {
+    const error = validateFormForHold();
+    if (error) {
+      setMessage({ type: 'error', text: error });
+      return;
+    }
+    setShowHoldPinModal(true);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      ...initialFormState,
+      employeeSignatureDate: today,
+      supervisorSignatureDate: today
+    });
+    setIsPrefilled(false);
+    if (onReset) onReset();
   };
 
   const handleSubmit = async (e) => {
@@ -137,45 +219,23 @@ const FormPage = () => {
           : formData.workerId
       };
 
-      const result = await submitAgreement(submitData);
+      // Use updateWithSignatures if this is a prefilled form, otherwise submit new
+      const result = isPrefilled 
+        ? await updateWithSignatures(submitData)
+        : await submitAgreement(submitData);
       
       if (result.success) {
         const emailMsg = submitData.sendCopyToEmployee 
           ? ' A copy has been sent to your email.' 
           : '';
-        setMessage({ type: 'success', text: `Agreement submitted successfully!${emailMsg}` });
-        // Reset form
-        setFormData({
-          name: '',
-          title: '',
-          workerId: '',
-          hasDifferentTrainingId: false,
-          trainingWorkerId: '',
-          device: false,
-          deviceName: '',
-          portableCharger: false,
-          protectiveCover: false,
-          keyboard: false,
-          serialNumber: '',
-          esperIdentifier: '',
-          exchangeDevice: false,
-          returningDeviceName: '',
-          returningSerial: '',
-          agreement1: false,
-          agreement2: false,
-          agreement3: false,
-          employeeSignatureDate: today,
-          employeeSignature: '',
-          supervisorSignatureDate: today,
-          supervisorSignature: '',
-          sendCopyToEmployee: false,
-          employeeEmail: ''
-        });
+        const actionMsg = isPrefilled ? 'completed' : 'submitted';
+        setMessage({ type: 'success', text: `Agreement ${actionMsg} successfully!${emailMsg}` });
+        resetForm();
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to submit agreement' });
       }
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', text: 'Network error. Please try again.' });
     } finally {
       setSubmitting(false);
@@ -186,8 +246,26 @@ const FormPage = () => {
     <div className="page-container">
       {message.text && (
         <div className={`message message-${message.type}`}>
-          <FontAwesomeIcon icon={message.type === 'success' ? faCheck : faSpinner} />
+          <FontAwesomeIcon icon={message.type === 'success' ? faCheck : message.type === 'info' ? faClipboardList : faSpinner} />
           {message.text}
+        </div>
+      )}
+
+      {isPrefilled && (
+        <div className="prefill-banner glass-subtle" style={{
+          padding: '0.75rem 1rem',
+          marginBottom: '1rem',
+          borderRadius: '8px',
+          background: `linear-gradient(135deg, ${colors.accentPink}20, ${colors.softPink}10)`,
+          border: `1px solid ${colors.accentPink}40`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem'
+        }}>
+          <FontAwesomeIcon icon={faClipboardList} style={{ color: colors.accentPink }} />
+          <span style={{ color: colors.textPrimary, fontSize: '0.9rem' }}>
+            <strong>Prefilled Form:</strong> Complete by adding signatures below
+          </span>
         </div>
       )}
 
@@ -430,6 +508,45 @@ const FormPage = () => {
             ))}
           </div>
 
+          {/* Hold for Signature Button - Only show for new forms, not prefilled */}
+          {!isPrefilled && (
+            <div style={{ 
+              textAlign: 'center', 
+              marginTop: '2rem',
+              padding: '1.5rem',
+              borderRadius: '8px',
+              background: `linear-gradient(135deg, ${colors.mutedPurple}30, ${colors.mutedPurple}10)`,
+              border: `1px dashed ${colors.glassBorder}`
+            }}>
+              <p style={{ 
+                color: colors.textSecondary, 
+                marginBottom: '1rem',
+                fontSize: '0.9rem'
+              }}>
+                Need to collect signatures later?
+              </p>
+              <button 
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleHoldForSignature}
+                disabled={holdingForSig}
+                style={{ minWidth: '200px' }}
+              >
+                {holdingForSig ? (
+                  <>
+                    <FontAwesomeIcon icon={faSpinner} spin />
+                    Holding...
+                  </>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faPause} />
+                    Hold for Signature
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
           {/* Signatures */}
           <h2 className="form-section-title" style={{ marginTop: '2rem' }}>
             <FontAwesomeIcon icon={faFileSignature} />
@@ -548,6 +665,14 @@ const FormPage = () => {
         {COMPANY_INFO.city}<br />
         {COMPANY_INFO.phone}
       </div>
+
+      {/* PIN Modal for Hold for Signature */}
+      <PinModal
+        isOpen={showHoldPinModal}
+        onClose={() => setShowHoldPinModal(false)}
+        onSuccess={handleHoldPinSuccess}
+        title="Enter PIN to Hold Form"
+      />
     </div>
   );
 };

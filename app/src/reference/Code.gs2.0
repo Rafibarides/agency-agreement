@@ -7,6 +7,7 @@ const CONFIG = {
   ADMIN_USERNAME: 'Admin',
   ADMIN_PASSWORD: 'wellbound!',
   SHEET_NAME: 'Agreements',
+  APF_PIN: '1234', // PIN for Hold for Signature and APF access
   COMPANY_INFO: {
     name: 'AMBER COURT AT HOME D/B/A WELLBOUND',
     address: '7424 13th Avenue',
@@ -62,6 +63,22 @@ function doPost(e) {
       
       case 'getStats':
         return ContentService.createTextOutput(JSON.stringify(getStatistics()))
+          .setMimeType(ContentService.MimeType.JSON);
+      
+      case 'verifyPin':
+        return ContentService.createTextOutput(JSON.stringify(verifyPin(data.pin)))
+          .setMimeType(ContentService.MimeType.JSON);
+      
+      case 'holdForSignature':
+        return ContentService.createTextOutput(JSON.stringify(holdForSignature(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      
+      case 'getUnsignedAgreements':
+        return ContentService.createTextOutput(JSON.stringify(getUnsignedAgreements()))
+          .setMimeType(ContentService.MimeType.JSON);
+      
+      case 'updateWithSignatures':
+        return ContentService.createTextOutput(JSON.stringify(updateWithSignatures(data)))
           .setMimeType(ContentService.MimeType.JSON);
       
       default:
@@ -296,6 +313,190 @@ function adminLogin(data) {
     success: false,
     error: 'Invalid credentials'
   };
+}
+
+function verifyPin(pin) {
+  if (pin === CONFIG.APF_PIN) {
+    return {
+      success: true,
+      message: 'PIN verified'
+    };
+  }
+  
+  return {
+    success: false,
+    error: 'Invalid PIN'
+  };
+}
+
+// ============================================
+// HOLD FOR SIGNATURE FUNCTIONS
+// ============================================
+
+function holdForSignature(data) {
+  try {
+    const sheet = initializeSpreadsheet();
+    
+    // Create row without signatures
+    const row = [
+      new Date(),
+      data.name || '',
+      data.title || '',
+      data.workerId || '',
+      data.hasDifferentTrainingId || false,
+      data.trainingWorkerId || data.workerId || '',
+      data.device || false,
+      data.deviceName || '',
+      data.portableCharger || false,
+      data.protectiveCover || false,
+      data.keyboard || false,
+      data.serialNumber || '',
+      data.esperIdentifier || '',
+      data.exchangeDevice || false,
+      data.returningDeviceName || '',
+      data.returningSerial || '',
+      data.agreement1 || false,
+      data.agreement2 || false,
+      data.agreement3 || false,
+      '', // Employee Signature Date - empty
+      '', // Employee Signature - empty
+      '', // Supervisor Signature Date - empty
+      '', // Supervisor Signature - empty
+      false, // Send Copy to Employee
+      '' // Employee Email
+    ];
+    
+    sheet.appendRow(row);
+    const rowNumber = sheet.getLastRow();
+    
+    return {
+      success: true,
+      message: 'Form held for signature',
+      rowNumber: rowNumber
+    };
+  } catch(error) {
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+function getUnsignedAgreements() {
+  try {
+    const sheet = initializeSpreadsheet();
+    const data = sheet.getDataRange().getValues();
+    
+    if (data.length <= 1) {
+      return { success: true, agreements: [] };
+    }
+    
+    const headers = data[0];
+    const unsigned = [];
+    
+    // Find column indices
+    const empSigIndex = headers.indexOf('Employee Signature');
+    const supSigIndex = headers.indexOf('Supervisor Signature');
+    
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      
+      // Check if both signatures are empty
+      const empSig = row[empSigIndex];
+      const supSig = row[supSigIndex];
+      
+      if ((!empSig || empSig.toString().trim() === '') && 
+          (!supSig || supSig.toString().trim() === '')) {
+        const agreement = {};
+        headers.forEach((header, index) => {
+          agreement[header] = row[index];
+        });
+        agreement.rowNumber = i + 1;
+        unsigned.push(agreement);
+      }
+    }
+    
+    return {
+      success: true,
+      agreements: unsigned.reverse() // Most recent first
+    };
+  } catch(error) {
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+function updateWithSignatures(data) {
+  try {
+    const sheet = initializeSpreadsheet();
+    const allData = sheet.getDataRange().getValues();
+    const headers = allData[0];
+    
+    // Find column indices
+    const nameIndex = headers.indexOf('Name');
+    const workerIdIndex = headers.indexOf('Worker ID');
+    const empSigIndex = headers.indexOf('Employee Signature');
+    const supSigIndex = headers.indexOf('Supervisor Signature');
+    const empSigDateIndex = headers.indexOf('Employee Signature Date');
+    const supSigDateIndex = headers.indexOf('Supervisor Signature Date');
+    const sendCopyIndex = headers.indexOf('Send Copy to Employee');
+    const emailIndex = headers.indexOf('Employee Email');
+    
+    // Find the matching unsigned row
+    let matchingRow = -1;
+    
+    for (let i = 1; i < allData.length; i++) {
+      const row = allData[i];
+      const empSig = row[empSigIndex];
+      const supSig = row[supSigIndex];
+      
+      // Check if row is unsigned
+      if ((!empSig || empSig.toString().trim() === '') && 
+          (!supSig || supSig.toString().trim() === '')) {
+        // Check if name and workerId match
+        if (row[nameIndex] === data.name && 
+            row[workerIdIndex].toString() === data.workerId.toString()) {
+          matchingRow = i + 1; // Sheet rows are 1-indexed
+          break;
+        }
+      }
+    }
+    
+    if (matchingRow === -1) {
+      return {
+        success: false,
+        error: 'No matching unsigned agreement found'
+      };
+    }
+    
+    // Update the row with signatures
+    sheet.getRange(matchingRow, empSigDateIndex + 1).setValue(data.employeeSignatureDate || new Date());
+    sheet.getRange(matchingRow, empSigIndex + 1).setValue(data.employeeSignature || '');
+    sheet.getRange(matchingRow, supSigDateIndex + 1).setValue(data.supervisorSignatureDate || new Date());
+    sheet.getRange(matchingRow, supSigIndex + 1).setValue(data.supervisorSignature || '');
+    sheet.getRange(matchingRow, sendCopyIndex + 1).setValue(data.sendCopyToEmployee || false);
+    sheet.getRange(matchingRow, emailIndex + 1).setValue(data.employeeEmail || '');
+    
+    // Send emails after successful update
+    try {
+      sendNotificationEmails(data, matchingRow);
+    } catch(emailError) {
+      Logger.log('Email sending failed: ' + emailError.message);
+    }
+    
+    return {
+      success: true,
+      message: 'Agreement updated with signatures',
+      rowNumber: matchingRow
+    };
+  } catch(error) {
+    return {
+      success: false,
+      error: error.message
+    };
+  }
 }
 
 // ============================================
