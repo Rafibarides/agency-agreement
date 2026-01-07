@@ -36,7 +36,7 @@ function App() {
       {/* Navigation */}
       <nav className="nav-container">
         <img 
-          src="/logo.png" 
+          src={`${import.meta.env.BASE_URL}logo.png`}
           alt="Wellbound Logo" 
           className="nav-logo"
           onClick={() => setCurrentPage(PAGES.FORM)}

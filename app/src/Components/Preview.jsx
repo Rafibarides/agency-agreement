@@ -70,7 +70,7 @@ const Preview = ({ agreement, onClose }) => {
           <div className="pdf-preview">
             {/* Header */}
             <div className="pdf-header">
-              <img src="/logoblack.png" alt="Wellbound Logo" className="pdf-logo" />
+              <img src={`${import.meta.env.BASE_URL}logoblack.png`} alt="Wellbound Logo" className="pdf-logo" />
               <h1 className="pdf-title">PROPERTY AGREEMENT FORM</h1>
               <div className="pdf-company">
                 {COMPANY_INFO.name}<br />
