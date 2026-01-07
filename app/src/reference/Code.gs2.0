@@ -398,6 +398,12 @@ function getUnsignedAgreements() {
     const empSigIndex = headers.indexOf('Employee Signature');
     const supSigIndex = headers.indexOf('Supervisor Signature');
     
+    // If signature columns don't exist, return empty (sheet may not be set up yet)
+    if (empSigIndex === -1 || supSigIndex === -1) {
+      Logger.log('Signature columns not found. Headers: ' + headers.join(', '));
+      return { success: true, agreements: [] };
+    }
+    
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
       
@@ -421,6 +427,7 @@ function getUnsignedAgreements() {
       agreements: unsigned.reverse() // Most recent first
     };
   } catch(error) {
+    Logger.log('getUnsignedAgreements error: ' + error.message);
     return {
       success: false,
       error: error.message
@@ -434,7 +441,7 @@ function updateWithSignatures(data) {
     const allData = sheet.getDataRange().getValues();
     const headers = allData[0];
     
-    // Find column indices
+    // Find column indices (0-indexed from headers array)
     const nameIndex = headers.indexOf('Name');
     const workerIdIndex = headers.indexOf('Worker ID');
     const empSigIndex = headers.indexOf('Employee Signature');
@@ -443,6 +450,26 @@ function updateWithSignatures(data) {
     const supSigDateIndex = headers.indexOf('Supervisor Signature Date');
     const sendCopyIndex = headers.indexOf('Send Copy to Employee');
     const emailIndex = headers.indexOf('Employee Email');
+    
+    // Validate that required columns exist
+    const requiredColumns = {
+      'Name': nameIndex,
+      'Worker ID': workerIdIndex,
+      'Employee Signature': empSigIndex,
+      'Supervisor Signature': supSigIndex,
+      'Employee Signature Date': empSigDateIndex,
+      'Supervisor Signature Date': supSigDateIndex
+    };
+    
+    for (const [colName, colIndex] of Object.entries(requiredColumns)) {
+      if (colIndex === -1) {
+        Logger.log('Missing column: ' + colName + '. Headers found: ' + headers.join(', '));
+        return {
+          success: false,
+          error: 'Spreadsheet missing required column: ' + colName
+        };
+      }
+    }
     
     // Find the matching unsigned row
     let matchingRow = -1;
@@ -471,13 +498,19 @@ function updateWithSignatures(data) {
       };
     }
     
-    // Update the row with signatures
+    // Update the row with signatures (column indices are 0-based, getRange needs 1-based)
     sheet.getRange(matchingRow, empSigDateIndex + 1).setValue(data.employeeSignatureDate || new Date());
     sheet.getRange(matchingRow, empSigIndex + 1).setValue(data.employeeSignature || '');
     sheet.getRange(matchingRow, supSigDateIndex + 1).setValue(data.supervisorSignatureDate || new Date());
     sheet.getRange(matchingRow, supSigIndex + 1).setValue(data.supervisorSignature || '');
-    sheet.getRange(matchingRow, sendCopyIndex + 1).setValue(data.sendCopyToEmployee || false);
-    sheet.getRange(matchingRow, emailIndex + 1).setValue(data.employeeEmail || '');
+    
+    // Only update email columns if they exist (they might be missing in older sheets)
+    if (sendCopyIndex !== -1) {
+      sheet.getRange(matchingRow, sendCopyIndex + 1).setValue(data.sendCopyToEmployee || false);
+    }
+    if (emailIndex !== -1) {
+      sheet.getRange(matchingRow, emailIndex + 1).setValue(data.employeeEmail || '');
+    }
     
     // Send emails after successful update
     try {
@@ -492,6 +525,7 @@ function updateWithSignatures(data) {
       rowNumber: matchingRow
     };
   } catch(error) {
+    Logger.log('updateWithSignatures error: ' + error.message);
     return {
       success: false,
       error: error.message
