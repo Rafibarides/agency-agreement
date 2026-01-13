@@ -11,10 +11,14 @@ import {
   faSpinner,
   faEnvelope,
   faPause,
-  faClipboardList
+  faClipboardList,
+  faQrcode,
+  faBarcode
 } from '@fortawesome/free-solid-svg-icons';
 import SignaturePad from '../Components/SignaturePad';
 import PinModal from '../Components/PinModal';
+import BarcodeModal from '../Components/BarcodeModal';
+import BarcodeScanner from '../Components/BarcodeScanner';
 import { 
   submitAgreement, 
   holdForSignature,
@@ -61,6 +65,9 @@ const FormPage = ({ prefillData, onReset }) => {
   const [holdingForSig, setHoldingForSig] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [showHoldPinModal, setShowHoldPinModal] = useState(false);
+  const [showBarcodePinModal, setShowBarcodePinModal] = useState(false);
+  const [showBarcodeModal, setShowBarcodeModal] = useState(false);
+  const [barcodeData, setBarcodeData] = useState({ rowNumber: null, name: '', workerId: '' });
   const [isPrefilled, setIsPrefilled] = useState(false);
 
   // Handle prefillData when coming from APF list
@@ -189,6 +196,66 @@ const FormPage = ({ prefillData, onReset }) => {
     setShowHoldPinModal(true);
   };
 
+  const handleHoldWithBarcode = () => {
+    const error = validateFormForHold();
+    if (error) {
+      setMessage({ type: 'error', text: error });
+      return;
+    }
+    setShowBarcodePinModal(true);
+  };
+
+  const handleBarcodePinSuccess = async () => {
+    setHoldingForSig(true);
+    setMessage({ type: '', text: '' });
+
+    try {
+      const submitData = {
+        ...formData,
+        trainingWorkerId: formData.hasDifferentTrainingId 
+          ? formData.trainingWorkerId 
+          : formData.workerId
+      };
+
+      const result = await holdForSignature(submitData);
+      
+      if (result.success && result.rowNumber) {
+        // Store barcode data and show modal
+        setBarcodeData({
+          rowNumber: result.rowNumber,
+          name: formData.name,
+          workerId: formData.workerId
+        });
+        setShowBarcodeModal(true);
+        setMessage({ type: 'success', text: 'Form held. Print or download the barcode below.' });
+        resetForm();
+      } else {
+        setMessage({ type: 'error', text: result.error || 'Failed to hold form' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Network error. Please try again.' });
+    } finally {
+      setHoldingForSig(false);
+    }
+  };
+
+  const handleBarcodeFormLoaded = (loadedFormData) => {
+    setFormData({
+      ...initialFormState,
+      ...loadedFormData,
+      employeeSignatureDate: today,
+      supervisorSignatureDate: today,
+      employeeSignature: '',
+      supervisorSignature: ''
+    });
+    setIsPrefilled(true);
+    setMessage({ 
+      type: 'info', 
+      text: `Form loaded for ${loadedFormData.name}. Please add signatures to complete.` 
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const resetForm = () => {
     setFormData({
       ...initialFormState,
@@ -266,6 +333,31 @@ const FormPage = ({ prefillData, onReset }) => {
           <span style={{ color: colors.textPrimary, fontSize: '0.9rem' }}>
             <strong>Prefilled Form:</strong> Complete by adding signatures below
           </span>
+        </div>
+      )}
+
+      {/* Barcode Scanner - Quick form loading */}
+      {!isPrefilled && (
+        <div className="barcode-scanner-section glass-subtle" style={{
+          padding: '1rem 1.25rem',
+          marginBottom: '1rem',
+          borderRadius: '8px',
+          background: `linear-gradient(135deg, ${colors.mutedPurple}15, ${colors.mutedPurple}05)`,
+          border: `1px solid ${colors.glassBorder}`
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.5rem', 
+            marginBottom: '0.75rem',
+            color: colors.accentPink,
+            fontSize: '0.95rem',
+            fontWeight: '600'
+          }}>
+            <FontAwesomeIcon icon={faBarcode} />
+            Quick Load
+          </div>
+          <BarcodeScanner onFormLoaded={handleBarcodeFormLoaded} />
         </div>
       )}
 
@@ -508,7 +600,7 @@ const FormPage = ({ prefillData, onReset }) => {
             ))}
           </div>
 
-          {/* Hold for Signature Button - Only show for new forms, not prefilled */}
+          {/* Hold for Signature Buttons - Only show for new forms, not prefilled */}
           {!isPrefilled && (
             <div style={{ 
               textAlign: 'center', 
@@ -525,25 +617,46 @@ const FormPage = ({ prefillData, onReset }) => {
               }}>
                 Need to collect signatures later?
               </p>
-              <button 
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleHoldForSignature}
-                disabled={holdingForSig}
-                style={{ minWidth: '200px' }}
-              >
-                {holdingForSig ? (
-                  <>
-                    <FontAwesomeIcon icon={faSpinner} spin />
-                    Holding...
-                  </>
-                ) : (
-                  <>
-                    <FontAwesomeIcon icon={faPause} />
-                    Hold for Signature
-                  </>
-                )}
-              </button>
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button 
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleHoldForSignature}
+                  disabled={holdingForSig}
+                  style={{ minWidth: '180px' }}
+                >
+                  {holdingForSig ? (
+                    <>
+                      <FontAwesomeIcon icon={faSpinner} spin />
+                      Holding...
+                    </>
+                  ) : (
+                    <>
+                      <FontAwesomeIcon icon={faPause} />
+                      Hold for Signature
+                    </>
+                  )}
+                </button>
+                <button 
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleHoldWithBarcode}
+                  disabled={holdingForSig}
+                  style={{ minWidth: '180px' }}
+                >
+                  {holdingForSig ? (
+                    <>
+                      <FontAwesomeIcon icon={faSpinner} spin />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <FontAwesomeIcon icon={faQrcode} />
+                      Hold + Barcode
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           )}
 
@@ -672,6 +785,23 @@ const FormPage = ({ prefillData, onReset }) => {
         onClose={() => setShowHoldPinModal(false)}
         onSuccess={handleHoldPinSuccess}
         title="Enter PIN to Hold Form"
+      />
+
+      {/* PIN Modal for Hold with Barcode */}
+      <PinModal
+        isOpen={showBarcodePinModal}
+        onClose={() => setShowBarcodePinModal(false)}
+        onSuccess={handleBarcodePinSuccess}
+        title="Enter PIN to Hold Form & Generate Barcode"
+      />
+
+      {/* Barcode Modal - shows generated barcode for printing */}
+      <BarcodeModal
+        isOpen={showBarcodeModal}
+        onClose={() => setShowBarcodeModal(false)}
+        rowNumber={barcodeData.rowNumber}
+        name={barcodeData.name}
+        workerId={barcodeData.workerId}
       />
     </div>
   );

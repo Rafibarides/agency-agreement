@@ -1107,3 +1107,163 @@
     height: 45px !important;
   }
 }
+
+/* ============================================
+   BARCODE COMPONENTS
+   ============================================ */
+
+/* Barcode Modal */
+.barcode-modal .modal-body {
+  padding: 1.5rem;
+}
+
+.barcode-content {
+  padding: 1rem;
+}
+
+.barcode-qr-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+}
+
+.barcode-qr-image {
+  width: 180px;
+  height: 180px;
+  padding: 10px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.barcode-info {
+  margin-bottom: 1rem;
+}
+
+.barcode-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--white);
+  margin-bottom: 0.5rem;
+}
+
+.barcode-worker-id {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.barcode-code {
+  display: inline-block;
+  font-family: 'Courier New', monospace;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent-pink);
+  background: rgba(230, 119, 179, 0.15);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.barcode-1d-container {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--glass-border);
+}
+
+.barcode-1d-image {
+  max-width: 250px;
+  height: auto;
+  padding: 8px;
+  background: white;
+  border-radius: 6px;
+}
+
+.barcode-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+/* Barcode Scanner */
+.barcode-scanner-container {
+  width: 100%;
+}
+
+.barcode-scanner-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.barcode-scanner-icon {
+  position: absolute;
+  left: 1rem;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  z-index: 1;
+}
+
+.barcode-scanner-input {
+  padding-left: 2.75rem !important;
+  padding-right: 2.5rem !important;
+}
+
+.barcode-scanner-loading {
+  position: absolute;
+  right: 1rem;
+  color: var(--accent-pink);
+}
+
+.barcode-scanner-status {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.barcode-scanner-status.success {
+  background: rgba(76, 175, 80, 0.15);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  color: #81C784;
+}
+
+.barcode-scanner-status.error {
+  background: rgba(229, 115, 115, 0.15);
+  border: 1px solid rgba(229, 115, 115, 0.3);
+  color: #E57373;
+}
+
+.barcode-scanner-hint {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Barcode Scanner Section on Form */
+.barcode-scanner-section {
+  transition: all 0.2s ease;
+}
+
+.barcode-scanner-section:hover {
+  border-color: var(--accent-pink);
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .barcode-qr-image {
+    width: 150px;
+    height: 150px;
+  }
+  
+  .barcode-actions {
+    flex-direction: column;
+  }
+  
+  .barcode-actions .btn {
+    width: 100%;
+  }
+}

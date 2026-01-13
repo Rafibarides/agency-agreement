@@ -81,6 +81,10 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(updateWithSignatures(data)))
           .setMimeType(ContentService.MimeType.JSON);
       
+      case 'getAgreementByRow':
+        return ContentService.createTextOutput(JSON.stringify(getAgreementByRowNumber(data.rowNumber)))
+          .setMimeType(ContentService.MimeType.JSON);
+      
       default:
         throw new Error('Invalid action');
     }
@@ -428,6 +432,44 @@ function getUnsignedAgreements() {
     };
   } catch(error) {
     Logger.log('getUnsignedAgreements error: ' + error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+function getAgreementByRowNumber(rowNumber) {
+  try {
+    if (!rowNumber) {
+      return { success: false, error: 'Row number is required' };
+    }
+    
+    const sheet = initializeSpreadsheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    // Row number is 1-indexed (row 1 is headers, row 2 is first data row)
+    const rowIndex = parseInt(rowNumber) - 1;
+    
+    if (rowIndex < 1 || rowIndex >= data.length) {
+      return { success: false, error: 'Agreement not found' };
+    }
+    
+    const row = data[rowIndex];
+    const agreement = {};
+    
+    headers.forEach((header, index) => {
+      agreement[header] = row[index];
+    });
+    agreement.rowNumber = parseInt(rowNumber);
+    
+    return {
+      success: true,
+      agreement: agreement
+    };
+  } catch(error) {
+    Logger.log('getAgreementByRowNumber error: ' + error.message);
     return {
       success: false,
       error: error.message

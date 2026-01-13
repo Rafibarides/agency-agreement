@@ -72,6 +72,11 @@ export async function updateWithSignatures(formData) {
   return apiRequest('updateWithSignatures', formData);
 }
 
+// Get a specific agreement by row number (for barcode scanning)
+export async function getAgreementByRowNumber(rowNumber) {
+  return apiRequest('getAgreementByRow', { rowNumber });
+}
+
 // Company information
 export const COMPANY_INFO = {
   name: 'AMBER COURT AT HOME D/B/A WELLBOUND',
@@ -127,6 +132,7 @@ export default {
   holdForSignature,
   getUnsignedAgreements,
   updateWithSignatures,
+  getAgreementByRowNumber,
   COMPANY_INFO,
   TITLE_OPTIONS,
   PROPERTY_ITEMS,
