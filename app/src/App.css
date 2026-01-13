@@ -315,6 +315,88 @@
 }
 
 /* Signature Pad */
+.signature-mode-selector {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(82, 70, 89, 0.4);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-btn:hover:not(:disabled) {
+  background: rgba(82, 70, 89, 0.6);
+  border-color: rgba(230, 119, 179, 0.3);
+}
+
+.mode-btn.active {
+  background: rgba(230, 119, 179, 0.2);
+  border-color: var(--accent-pink);
+  color: var(--accent-pink);
+}
+
+.mode-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.signature-status {
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-connected {
+  color: #81C784;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-warning {
+  color: #FFB74D;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-error {
+  color: #E57373;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.retry-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0.25rem;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.retry-btn:hover {
+  opacity: 1;
+}
+
 .signature-container {
   background: rgba(255, 255, 255, 0.95);
   border-radius: 12px;
@@ -345,6 +427,113 @@
   color: rgba(62, 14, 48, 0.3);
   font-size: 0.875rem;
   pointer-events: none;
+}
+
+/* Hardware Signature Pad Styles */
+.hardware-signature-area {
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.hardware-signature-preview {
+  width: 100%;
+}
+
+.hardware-preview-canvas {
+  width: 100%;
+  height: 120px;
+  cursor: default;
+}
+
+.hardware-capture-active {
+  text-align: center;
+  width: 100%;
+}
+
+.capture-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: #3E0E30;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+}
+
+.pulse-icon {
+  animation: pulse 1.5s ease-in-out infinite;
+  color: var(--accent-pink);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.1); }
+}
+
+.point-count {
+  font-size: 0.8rem;
+  color: rgba(62, 14, 48, 0.6);
+}
+
+.capture-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.hardware-capture-ready {
+  text-align: center;
+}
+
+.btn-capture {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, var(--accent-pink), #D35B9A);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-capture:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(230, 119, 179, 0.4);
+}
+
+.hardware-unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: rgba(62, 14, 48, 0.6);
+  font-size: 0.9rem;
+}
+
+.hardware-unavailable svg {
+  font-size: 1.5rem;
+  color: #FFB74D;
+}
+
+.signature-error {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(229, 115, 115, 0.15);
+  border: 1px solid rgba(229, 115, 115, 0.3);
+  border-radius: 6px;
+  color: #E57373;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 /* Date Input */
