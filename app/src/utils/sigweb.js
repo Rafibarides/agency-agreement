@@ -2,9 +2,11 @@
  * SigWeb Integration for Topaz Signature Pads
  * Supports T-LBK755-BHSB-R and other Topaz signature capture devices
  * 
- * SigWeb runs as a local service on port 47289 (HTTPS) or 47290 (HTTP)
+ * SigWeb runs as a local service on port 47289 (HTTPS) or 47290 (HTTP) got it
  * Requires SigWeb to be installed and running on the client machine
  */
+
+
 
 const SIGWEB_CONFIG = {
   // Default SigWeb service ports
