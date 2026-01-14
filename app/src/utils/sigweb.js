@@ -602,23 +602,44 @@ export async function getSignaturePoints() {
  */
 export async function getSignatureAsSVGPath(targetWidth = 400, targetHeight = 120) {
   const pointCount = await getSignaturePointCount();
-  if (pointCount === 0) return '';
+  console.log('[SigWeb] getSignatureAsSVGPath - point count:', pointCount);
+  
+  if (pointCount === 0) {
+    console.log('[SigWeb] No points, returning empty string');
+    return '';
+  }
   
   try {
     // Get SigString (matches working Topaz code)
     const sigData = await sigWebGet('SigString');
+    console.log('[SigWeb] Raw SigString response:', sigData ? sigData.substring(0, 100) : 'null');
     
-    if (sigData && sigData !== '' && sigData !== '""') {
-      // Remove quotes if present
-      const cleanData = sigData.replace(/^"|"$/g, '');
-      return convertSigStringToSVGPath(cleanData, targetWidth, targetHeight);
+    if (sigData && sigData.length > 2) {
+      // SigWeb returns the string with quotes, like: "x1,y1,x2,y2,..."
+      // We need to strip them - use slice(1, -1) like the reference code
+      let cleanData = sigData;
+      if (sigData.startsWith('"') && sigData.endsWith('"')) {
+        cleanData = sigData.slice(1, -1);
+      }
+      // Also try regex approach as backup
+      cleanData = cleanData.replace(/^"|"$/g, '');
+      
+      console.log('[SigWeb] Cleaned SigString:', cleanData.substring(0, 100));
+      
+      if (cleanData && cleanData.length > 0) {
+        const svgPath = convertSigStringToSVGPath(cleanData, targetWidth, targetHeight);
+        console.log('[SigWeb] Converted to SVG path:', svgPath ? svgPath.substring(0, 100) : 'empty');
+        return svgPath;
+      }
     }
     
+    console.log('[SigWeb] SigString empty or invalid, trying fallback');
     // Fallback: get points individually
     const points = await getSignaturePoints();
+    console.log('[SigWeb] Got points:', points.length);
     return convertPointsToSVGPath(points, targetWidth, targetHeight);
   } catch (error) {
-    console.error('Error getting signature as SVG:', error);
+    console.error('[SigWeb] Error getting signature as SVG:', error);
     return '';
   }
 }
@@ -631,18 +652,27 @@ export async function getSignatureAsSVGPath(targetWidth = 400, targetHeight = 12
  * @returns {string} SVG path data
  */
 function convertSigStringToSVGPath(sigString, targetWidth = 400, targetHeight = 120) {
-  if (!sigString) return '';
+  if (!sigString) {
+    console.log('[SigWeb] convertSigStringToSVGPath: empty input');
+    return '';
+  }
   
   try {
     // Parse the signature string - format is typically comma-separated values
     // with pen-up indicated by 0,0 coordinates
     const values = sigString.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
     
-    if (values.length < 4) return '';
+    console.log('[SigWeb] convertSigStringToSVGPath: parsed', values.length, 'values');
+    
+    if (values.length < 4) {
+      console.log('[SigWeb] convertSigStringToSVGPath: not enough values');
+      return '';
+    }
     
     // Find bounds for scaling
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
+    let validPoints = 0;
     
     for (let i = 0; i < values.length - 1; i += 2) {
       const x = values[i];
@@ -652,7 +682,16 @@ function convertSigStringToSVGPath(sigString, targetWidth = 400, targetHeight = 
         maxX = Math.max(maxX, x);
         minY = Math.min(minY, y);
         maxY = Math.max(maxY, y);
+        validPoints++;
       }
+    }
+    
+    console.log('[SigWeb] Bounds: validPoints=', validPoints, 'minX=', minX, 'maxX=', maxX, 'minY=', minY, 'maxY=', maxY);
+    
+    // If no valid points found, return empty
+    if (validPoints === 0 || minX === Infinity) {
+      console.log('[SigWeb] No valid points found');
+      return '';
     }
     
     // Calculate scale factors with padding
@@ -702,8 +741,11 @@ function convertSigStringToSVGPath(sigString, targetWidth = 400, targetHeight = 
       paths.push(currentPath);
     }
     
-    return paths.join(' ');
-  } catch {
+    const result = paths.join(' ');
+    console.log('[SigWeb] convertSigStringToSVGPath: created', paths.length, 'path segments, total length:', result.length);
+    return result;
+  } catch (err) {
+    console.error('[SigWeb] convertSigStringToSVGPath error:', err);
     return '';
   }
 }
