@@ -2,11 +2,12 @@
  * SigWeb Integration for Topaz Signature Pads
  * Supports T-LBK755-BHSB-R and other Topaz signature capture devices
  * 
- * SigWeb runs as a local service on port 47289 (HTTPS) or 47290 (HTTP) got it
+ * SigWeb runs as a local service on port 47289 (HTTPS) or 47290 (HTTP)
  * Requires SigWeb to be installed and running on the client machine
+ * 
+ * IMPORTANT: For HTTPS pages, the browser must first accept SigWeb's self-signed
+ * certificate by visiting https://localhost:47289/SigWeb/TabletState directly.
  */
-
-
 
 const SIGWEB_CONFIG = {
   // Default SigWeb service ports
@@ -23,7 +24,10 @@ const SIGWEB_CONFIG = {
   
   // LCD display settings for pads with screens
   lcdXSize: 240,
-  lcdYSize: 64
+  lcdYSize: 64,
+  
+  // Connection timeout in ms
+  timeout: 3000
 };
 
 // Track SigWeb connection state
@@ -31,50 +35,157 @@ let sigWebConnection = {
   isConnected: false,
   protocol: null,
   port: null,
-  tabletModel: null
+  tabletModel: null,
+  lastError: null
 };
 
 /**
+ * Get the last connection error for debugging
+ */
+export function getLastConnectionError() {
+  return sigWebConnection.lastError;
+}
+
+/**
+ * Create a fetch with timeout that works across browsers
+ */
+async function fetchWithTimeout(url, options = {}, timeout = SIGWEB_CONFIG.timeout) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
+/**
+ * Test a single SigWeb endpoint
+ * @returns {Promise<{success: boolean, state: string, error: string|null}>}
+ */
+async function testEndpoint(protocol, port) {
+  const url = `${protocol}://localhost:${port}/SigWeb/TabletState`;
+  
+  try {
+    const response = await fetchWithTimeout(url, {
+      method: 'GET',
+      mode: 'cors',
+      cache: 'no-cache',
+      headers: {
+        'Accept': 'text/plain'
+      }
+    });
+    
+    if (response.ok) {
+      const state = await response.text();
+      return { success: true, state: state.trim(), error: null };
+    } else {
+      return { success: false, state: '', error: `HTTP ${response.status}: ${response.statusText}` };
+    }
+  } catch (error) {
+    // Provide detailed error info for debugging
+    let errorMsg = error.message || 'Unknown error';
+    
+    if (error.name === 'AbortError') {
+      errorMsg = 'Connection timeout - SigWeb may not be running';
+    } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+      // This is usually CORS or network error
+      if (protocol === 'https') {
+        errorMsg = 'HTTPS connection failed - certificate may need to be accepted in browser';
+      } else {
+        errorMsg = 'Connection failed - CORS error or SigWeb not running';
+      }
+    }
+    
+    return { success: false, state: '', error: errorMsg };
+  }
+}
+
+/**
  * Check if SigWeb service is available
- * @returns {Promise<{available: boolean, protocol: string, port: number}>}
+ * Tries HTTPS first (required for HTTPS pages), then HTTP as fallback
+ * @returns {Promise<{available: boolean, protocol: string, port: number, tabletConnected: boolean, error: string|null}>}
  */
 export async function checkSigWebAvailability() {
-  // Try HTTPS first (preferred)
-  const endpoints = [
-    { protocol: 'https', port: SIGWEB_CONFIG.httpsPort },
-    { protocol: 'http', port: SIGWEB_CONFIG.httpPort }
-  ];
+  const isPageHTTPS = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  const errors = [];
+  
+  // Determine endpoint order based on page protocol
+  // For HTTPS pages, we MUST use HTTPS to SigWeb (mixed content blocking)
+  // For HTTP pages, we can try both but HTTP is more reliable
+  const endpoints = isPageHTTPS
+    ? [
+        { protocol: 'https', port: SIGWEB_CONFIG.httpsPort }
+        // Note: HTTP won't work from HTTPS page due to mixed content
+      ]
+    : [
+        { protocol: 'http', port: SIGWEB_CONFIG.httpPort },
+        { protocol: 'https', port: SIGWEB_CONFIG.httpsPort }
+      ];
+  
+  console.log('[SigWeb] Checking availability...', { isPageHTTPS, endpoints });
   
   for (const endpoint of endpoints) {
-    try {
-      const response = await fetch(
-        `${endpoint.protocol}://localhost:${endpoint.port}/SigWeb/TabletState`,
-        { 
-          method: 'GET',
-          mode: 'cors',
-          cache: 'no-cache',
-          signal: AbortSignal.timeout(2000)
-        }
-      );
+    console.log(`[SigWeb] Trying ${endpoint.protocol}://localhost:${endpoint.port}...`);
+    
+    const result = await testEndpoint(endpoint.protocol, endpoint.port);
+    
+    if (result.success) {
+      console.log(`[SigWeb] Connected via ${endpoint.protocol}:${endpoint.port}, tablet state: ${result.state}`);
       
-      if (response.ok) {
-        const state = await response.text();
-        sigWebConnection = {
-          isConnected: true,
-          protocol: endpoint.protocol,
-          port: endpoint.port,
-          tabletModel: null
-        };
-        return { available: true, ...endpoint, tabletConnected: state === '1' };
-      }
-    } catch {
-      // Try next endpoint
-      continue;
+      sigWebConnection = {
+        isConnected: true,
+        protocol: endpoint.protocol,
+        port: endpoint.port,
+        tabletModel: null,
+        lastError: null
+      };
+      
+      return { 
+        available: true, 
+        protocol: endpoint.protocol,
+        port: endpoint.port,
+        tabletConnected: result.state === '1',
+        error: null
+      };
+    } else {
+      console.warn(`[SigWeb] ${endpoint.protocol}:${endpoint.port} failed:`, result.error);
+      errors.push(`${endpoint.protocol}:${endpoint.port} - ${result.error}`);
     }
   }
   
-  sigWebConnection.isConnected = false;
-  return { available: false, protocol: null, port: null, tabletConnected: false };
+  // All endpoints failed
+  const combinedError = errors.join('; ');
+  console.error('[SigWeb] All connection attempts failed:', combinedError);
+  
+  sigWebConnection = {
+    isConnected: false,
+    protocol: null,
+    port: null,
+    tabletModel: null,
+    lastError: combinedError
+  };
+  
+  // Provide helpful error message
+  let helpfulError = combinedError;
+  if (isPageHTTPS) {
+    helpfulError = 'HTTPS certificate not accepted. Visit https://localhost:47289/SigWeb/TabletState in your browser and accept the certificate, then refresh this page.';
+  }
+  
+  return { 
+    available: false, 
+    protocol: null, 
+    port: null, 
+    tabletConnected: false,
+    error: helpfulError
+  };
 }
 
 /**
@@ -88,6 +199,25 @@ function getSigWebBaseUrl() {
 }
 
 /**
+ * Check if currently connected to SigWeb
+ */
+export function isConnected() {
+  return sigWebConnection.isConnected;
+}
+
+/**
+ * Get current connection info
+ */
+export function getConnectionInfo() {
+  return {
+    isConnected: sigWebConnection.isConnected,
+    protocol: sigWebConnection.protocol,
+    port: sigWebConnection.port,
+    lastError: sigWebConnection.lastError
+  };
+}
+
+/**
  * Make a SigWeb API call
  */
 async function sigWebCall(endpoint, params = {}) {
@@ -98,17 +228,25 @@ async function sigWebCall(endpoint, params = {}) {
     url.searchParams.append(key, params[key]);
   });
   
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    mode: 'cors',
-    cache: 'no-cache'
-  });
-  
-  if (!response.ok) {
-    throw new Error(`SigWeb call failed: ${response.statusText}`);
+  try {
+    const response = await fetchWithTimeout(url.toString(), {
+      method: 'GET',
+      mode: 'cors',
+      cache: 'no-cache',
+      headers: {
+        'Accept': 'text/plain'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`SigWeb call failed: ${response.status} ${response.statusText}`);
+    }
+    
+    return response.text();
+  } catch (error) {
+    console.error(`[SigWeb] API call to ${endpoint} failed:`, error.message);
+    throw error;
   }
-  
-  return response.text();
 }
 
 /**
@@ -556,5 +694,8 @@ export default {
   getSignatureAsSVGPath,
   startSignatureCapture,
   stopSignatureCapture,
-  createSignatureCapture
+  createSignatureCapture,
+  isConnected,
+  getConnectionInfo,
+  getLastConnectionError
 };

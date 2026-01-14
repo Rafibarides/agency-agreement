@@ -16,6 +16,14 @@ export const CONNECTION_TYPE = {
   CANVAS: 'canvas' // Fallback to canvas drawing
 };
 
+// Connection states for UI feedback
+export const CONNECTION_STATE = {
+  DETECTING: 'detecting',
+  CONNECTED: 'connected',
+  DISCONNECTED: 'disconnected',
+  ERROR: 'error'
+};
+
 /**
  * Hook for managing Topaz signature pad connection and capture
  */
@@ -29,33 +37,52 @@ export function useTopazSignature(options = {}) {
 
   // State
   const [connectionType, setConnectionType] = useState(CONNECTION_TYPE.NONE);
+  const [connectionState, setConnectionState] = useState(CONNECTION_STATE.DETECTING);
   const [isConnected, setIsConnected] = useState(false);
   const [isTabletConnected, setIsTabletConnected] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [pointCount, setPointCount] = useState(0);
   const [error, setError] = useState(null);
+  const [connectionError, setConnectionError] = useState(null);
   const [tabletModel, setTabletModel] = useState(null);
 
   // Refs for cleanup
   const pollTimerRef = useRef(null);
   const isMountedRef = useRef(true);
+  const connectAttemptRef = useRef(0);
 
   // Check for SigWeb availability
   const checkSigWeb = useCallback(async () => {
     try {
       const result = await sigWeb.checkSigWebAvailability();
       if (result.available) {
-        const model = await sigWeb.getTabletModelNumber();
+        let model = null;
+        try {
+          model = await sigWeb.getTabletModelNumber();
+        } catch {
+          // Model number not critical
+        }
         return { 
           available: true, 
           tabletConnected: result.tabletConnected,
-          model 
+          model,
+          error: null
         };
       }
-    } catch {
-      // SigWeb not available
+      return { 
+        available: false, 
+        tabletConnected: false, 
+        model: null,
+        error: result.error || 'SigWeb not available'
+      };
+    } catch (err) {
+      return { 
+        available: false, 
+        tabletConnected: false, 
+        model: null,
+        error: err.message || 'Failed to check SigWeb'
+      };
     }
-    return { available: false, tabletConnected: false, model: null };
   }, []);
 
   // Check for SDK availability
@@ -67,40 +94,65 @@ export function useTopazSignature(options = {}) {
         return { 
           available: true, 
           type: result.type,
-          tabletConnected: state === 1 
+          tabletConnected: state === 1,
+          error: null
         };
       }
     } catch {
       // SDK not available
     }
-    return { available: false, type: null, tabletConnected: false };
+    return { available: false, type: null, tabletConnected: false, error: null };
   }, []);
 
   // Initialize connection
   const connect = useCallback(async () => {
-    setError(null);
+    const attemptId = ++connectAttemptRef.current;
+    
+    if (isMountedRef.current) {
+      setConnectionState(CONNECTION_STATE.DETECTING);
+      setError(null);
+      setConnectionError(null);
+    }
+    
+    console.log('[TopazHook] Starting connection check...');
     
     // Check SigWeb first if preferred
     if (preferSigWeb) {
       const sigWebResult = await checkSigWeb();
+      
+      // Abort if a newer attempt started
+      if (attemptId !== connectAttemptRef.current) return { success: false, type: CONNECTION_TYPE.NONE };
+      
       if (sigWebResult.available) {
+        console.log('[TopazHook] SigWeb connected successfully');
         if (isMountedRef.current) {
           setConnectionType(CONNECTION_TYPE.SIGWEB);
+          setConnectionState(CONNECTION_STATE.CONNECTED);
           setIsConnected(true);
           setIsTabletConnected(sigWebResult.tabletConnected);
           setTabletModel(sigWebResult.model);
+          setConnectionError(null);
         }
         return { success: true, type: CONNECTION_TYPE.SIGWEB };
+      } else {
+        console.log('[TopazHook] SigWeb not available:', sigWebResult.error);
       }
     }
 
     // Check SDK
     const sdkResult = await checkSDK();
+    
+    // Abort if a newer attempt started
+    if (attemptId !== connectAttemptRef.current) return { success: false, type: CONNECTION_TYPE.NONE };
+    
     if (sdkResult.available) {
+      console.log('[TopazHook] SDK connected successfully');
       if (isMountedRef.current) {
         setConnectionType(CONNECTION_TYPE.SDK);
+        setConnectionState(CONNECTION_STATE.CONNECTED);
         setIsConnected(true);
         setIsTabletConnected(sdkResult.tabletConnected);
+        setConnectionError(null);
       }
       return { success: true, type: CONNECTION_TYPE.SDK };
     }
@@ -108,24 +160,37 @@ export function useTopazSignature(options = {}) {
     // If SigWeb not preferred, check it now
     if (!preferSigWeb) {
       const sigWebResult = await checkSigWeb();
+      
+      // Abort if a newer attempt started  
+      if (attemptId !== connectAttemptRef.current) return { success: false, type: CONNECTION_TYPE.NONE };
+      
       if (sigWebResult.available) {
+        console.log('[TopazHook] SigWeb connected successfully (fallback)');
         if (isMountedRef.current) {
           setConnectionType(CONNECTION_TYPE.SIGWEB);
+          setConnectionState(CONNECTION_STATE.CONNECTED);
           setIsConnected(true);
           setIsTabletConnected(sigWebResult.tabletConnected);
           setTabletModel(sigWebResult.model);
+          setConnectionError(null);
         }
         return { success: true, type: CONNECTION_TYPE.SIGWEB };
       }
     }
 
     // No hardware available, fall back to canvas
+    // Get the last error from SigWeb for display
+    const lastError = sigWeb.getLastConnectionError();
+    console.log('[TopazHook] No hardware available, falling back to canvas. Error:', lastError);
+    
     if (isMountedRef.current) {
       setConnectionType(CONNECTION_TYPE.CANVAS);
+      setConnectionState(CONNECTION_STATE.DISCONNECTED);
       setIsConnected(false);
       setIsTabletConnected(false);
+      setConnectionError(lastError);
     }
-    return { success: false, type: CONNECTION_TYPE.CANVAS };
+    return { success: false, type: CONNECTION_TYPE.CANVAS, error: lastError };
   }, [preferSigWeb, checkSigWeb, checkSDK]);
 
   // Start signature capture
@@ -285,12 +350,15 @@ export function useTopazSignature(options = {}) {
   return {
     // State
     connectionType,
+    connectionState,
     isConnected,
     isTabletConnected,
     isCapturing,
+    isDetecting: connectionState === CONNECTION_STATE.DETECTING,
     pointCount,
     hasPoints: pointCount > 0,
     error,
+    connectionError,
     tabletModel,
     
     // Methods

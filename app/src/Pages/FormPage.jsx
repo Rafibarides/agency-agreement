@@ -12,8 +12,7 @@ import {
   faEnvelope,
   faPause,
   faClipboardList,
-  faQrcode,
-  faBarcode
+  faQrcode
 } from '@fortawesome/free-solid-svg-icons';
 import SignaturePad from '../Components/SignaturePad';
 import PinModal from '../Components/PinModal';
@@ -336,27 +335,13 @@ const FormPage = ({ prefillData, onReset }) => {
         </div>
       )}
 
-      {/* Barcode Scanner - Quick form loading */}
+      {/* Barcode Scanner - Compact inline */}
       {!isPrefilled && (
-        <div className="barcode-scanner-section glass-subtle" style={{
-          padding: '1rem 1.25rem',
-          marginBottom: '1rem',
-          borderRadius: '8px',
-          background: `linear-gradient(135deg, ${colors.mutedPurple}15, ${colors.mutedPurple}05)`,
-          border: `1px solid ${colors.glassBorder}`
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'flex-end',
+          marginBottom: '0.5rem'
         }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '0.5rem', 
-            marginBottom: '0.75rem',
-            color: colors.accentPink,
-            fontSize: '0.95rem',
-            fontWeight: '600'
-          }}>
-            <FontAwesomeIcon icon={faBarcode} />
-            Quick Load
-          </div>
           <BarcodeScanner onFormLoaded={handleBarcodeFormLoaded} />
         </div>
       )}

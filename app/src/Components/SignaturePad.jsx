@@ -8,9 +8,11 @@ import {
   faCheck, 
   faExclamationTriangle,
   faPlug,
-  faSync
+  faSync,
+  faSpinner,
+  faExternalLinkAlt
 } from '@fortawesome/free-solid-svg-icons';
-import { useTopazSignature, CONNECTION_TYPE } from '../hooks/useTopazSignature';
+import { useTopazSignature, CONNECTION_TYPE, CONNECTION_STATE } from '../hooks/useTopazSignature';
 
 // Signature capture modes
 const CAPTURE_MODE = {
@@ -32,6 +34,7 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
   const [captureMode, setCaptureMode] = useState(CAPTURE_MODE.CANVAS);
   const [hardwareSignatureSVG, setHardwareSignatureSVG] = useState('');
   const [isHardwareCapturing, setIsHardwareCapturing] = useState(false);
+  const [showCertHelp, setShowCertHelp] = useState(false);
 
   // Topaz signature pad hook
   const topaz = useTopazSignature({
@@ -349,14 +352,21 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
     await topaz.connect();
   }, [topaz]);
 
-  const showHardwareOption = enableHardware && topaz.connectionType !== CONNECTION_TYPE.CANVAS;
+  // Show hardware option if: enabled AND (connected OR still detecting)
+  // Don't show if we've finished detecting and determined CANVAS fallback
+  const showHardwareOption = enableHardware && (
+    topaz.isDetecting || 
+    topaz.connectionType === CONNECTION_TYPE.SIGWEB || 
+    topaz.connectionType === CONNECTION_TYPE.SDK
+  );
   const isHardwareAvailable = topaz.isConnected && topaz.isTabletConnected;
+  const hasConnectionError = topaz.connectionError && topaz.connectionError.includes('certificate');
 
   return (
     <div className="form-group">
       <label className="form-label">{label}</label>
       
-      {/* Mode Selector - only show if hardware is available */}
+      {/* Mode Selector - show if hardware is available or still detecting */}
       {showHardwareOption && (
         <div className="signature-mode-selector">
           <button
@@ -371,18 +381,83 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
             type="button"
             className={`mode-btn ${captureMode === CAPTURE_MODE.HARDWARE ? 'active' : ''}`}
             onClick={() => switchMode(CAPTURE_MODE.HARDWARE)}
-            disabled={!topaz.isConnected}
+            disabled={topaz.isDetecting || !topaz.isConnected}
           >
             <FontAwesomeIcon icon={faTabletAlt} />
-            <span>Signature Pad</span>
+            <span>{topaz.isDetecting ? 'Detecting...' : 'Signature Pad'}</span>
+            {topaz.isDetecting && <FontAwesomeIcon icon={faSpinner} spin style={{ marginLeft: '0.5rem' }} />}
           </button>
+        </div>
+      )}
+
+      {/* Connection error banner - show when there's a certificate issue even if not in hardware mode */}
+      {enableHardware && hasConnectionError && !topaz.isDetecting && !topaz.isConnected && (
+        <div className="signature-cert-error" style={{
+          background: 'linear-gradient(135deg, #ff6b6b20, #ff6b6b10)',
+          border: '1px solid #ff6b6b40',
+          borderRadius: '8px',
+          padding: '0.75rem 1rem',
+          marginBottom: '0.75rem',
+          fontSize: '0.85rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+            <FontAwesomeIcon icon={faExclamationTriangle} style={{ color: '#ff6b6b', marginTop: '0.15rem' }} />
+            <div style={{ flex: 1 }}>
+              <strong style={{ color: '#ff6b6b' }}>Signature Pad Setup Required</strong>
+              <p style={{ margin: '0.5rem 0 0.75rem', color: '#888' }}>
+                To use the Topaz signature pad, you need to accept the SigWeb security certificate:
+              </p>
+              <ol style={{ margin: 0, paddingLeft: '1.25rem', color: '#888' }}>
+                <li>
+                  <a 
+                    href="https://localhost:47289/SigWeb/TabletState" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    style={{ color: '#4a9eff', textDecoration: 'underline' }}
+                    onClick={(e) => {
+                      // Inform user what to do
+                      e.preventDefault();
+                      window.open('https://localhost:47289/SigWeb/TabletState', '_blank');
+                      setShowCertHelp(true);
+                    }}
+                  >
+                    Click here to open SigWeb <FontAwesomeIcon icon={faExternalLinkAlt} size="xs" />
+                  </a>
+                </li>
+                <li>Click &quot;Advanced&quot; → &quot;Proceed to localhost&quot;</li>
+                <li>You should see &quot;1&quot; (pad connected) or &quot;0&quot; (pad disconnected)</li>
+                <li>
+                  <button 
+                    type="button"
+                    onClick={retryConnection}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#4a9eff',
+                      cursor: 'pointer',
+                      padding: 0,
+                      textDecoration: 'underline',
+                      fontSize: 'inherit'
+                    }}
+                  >
+                    Then click here to retry connection
+                  </button>
+                </li>
+              </ol>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Status indicator for hardware mode */}
       {showHardwareOption && captureMode === CAPTURE_MODE.HARDWARE && (
         <div className="signature-status">
-          {topaz.isConnected ? (
+          {topaz.isDetecting ? (
+            <span className="status-detecting">
+              <FontAwesomeIcon icon={faSpinner} spin />
+              Detecting signature pad...
+            </span>
+          ) : topaz.isConnected ? (
             topaz.isTabletConnected ? (
               <span className="status-connected">
                 <FontAwesomeIcon icon={faPlug} />
@@ -405,7 +480,7 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
           ) : (
             <span className="status-error">
               <FontAwesomeIcon icon={faExclamationTriangle} />
-              SigWeb not detected - ensure it's running
+              {topaz.connectionError || 'SigWeb not detected - ensure it\'s running'}
               <button 
                 type="button" 
                 className="retry-btn"
