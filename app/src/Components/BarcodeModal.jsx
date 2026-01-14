@@ -6,11 +6,12 @@ import {
   faPrint,
   faQrcode,
   faUser,
-  faIdCard
+  faIdCard,
+  faEnvelope
 } from '@fortawesome/free-solid-svg-icons';
 import colors from '../utils/colors';
 
-const BarcodeModal = ({ isOpen, onClose, rowNumber, name, workerId }) => {
+const BarcodeModal = ({ isOpen, onClose, rowNumber, name, workerId, requestedBy }) => {
   const printRef = useRef(null);
   
   if (!isOpen) return null;
@@ -22,6 +23,9 @@ const BarcodeModal = ({ isOpen, onClose, rowNumber, name, workerId }) => {
   
   // Also generate a Code128 version (1D barcode) as alternative
   const barcode1DUrl = `https://barcodeapi.org/api/128/${encodeURIComponent(barcodeData)}`;
+  
+  // Check if this is an HR request (no worker ID yet)
+  const isHRRequest = requestedBy && (!workerId || workerId === '(Pending)');
 
   const handleDownload = async () => {
     try {
@@ -89,7 +93,13 @@ const BarcodeModal = ({ isOpen, onClose, rowNumber, name, workerId }) => {
           .worker-id {
             font-size: 16px;
             color: #666;
+            margin-bottom: 8px;
+          }
+          .requested-by {
+            font-size: 13px;
+            color: #888;
             margin-bottom: 15px;
+            font-style: italic;
           }
           .code {
             font-family: monospace;
@@ -109,7 +119,11 @@ const BarcodeModal = ({ isOpen, onClose, rowNumber, name, workerId }) => {
         <div class="barcode-card">
           <img src="${barcodeUrl}" alt="QR Code" class="barcode-img" />
           <div class="name">${name}</div>
-          <div class="worker-id">Worker ID: ${workerId}</div>
+          ${isHRRequest 
+            ? `<div class="worker-id">New Hire - Device Request</div>`
+            : `<div class="worker-id">Worker ID: ${workerId}</div>`
+          }
+          ${requestedBy ? `<div class="requested-by">Requested by: ${requestedBy}</div>` : ''}
           <div class="code">${barcodeData}</div>
         </div>
       </body>
@@ -161,8 +175,19 @@ const BarcodeModal = ({ isOpen, onClose, rowNumber, name, workerId }) => {
               </div>
               <div className="barcode-worker-id">
                 <FontAwesomeIcon icon={faIdCard} style={{ marginRight: '0.5rem' }} />
-                Worker ID: {workerId}
+                {isHRRequest ? 'New Hire - Device Request' : `Worker ID: ${workerId}`}
               </div>
+              {requestedBy && (
+                <div className="barcode-requested-by" style={{ 
+                  marginTop: '0.5rem',
+                  fontSize: '0.85rem',
+                  color: colors.textMuted,
+                  fontStyle: 'italic'
+                }}>
+                  <FontAwesomeIcon icon={faEnvelope} style={{ marginRight: '0.5rem' }} />
+                  Requested by: {requestedBy}
+                </div>
+              )}
             </div>
             
             {/* Barcode Code */}

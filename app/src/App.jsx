@@ -4,27 +4,31 @@ import {
   faFileSignature, 
   faShieldAlt, 
   faChartLine,
-  faClipboardList
+  faClipboardList,
+  faUserTie
 } from '@fortawesome/free-solid-svg-icons';
 import FormPage from './Pages/FormPage';
 import AdminPage from './Pages/AdminPage';
 import Dashboard from './Pages/Dashboard';
 import APFList from './Pages/APFList';
+import HRPage from './Pages/HRPage';
 import PinModal from './Components/PinModal';
+import HRLoginModal from './Components/HRLoginModal';
 import './App.css';
 
 const PAGES = {
   FORM: 'form',
   ADMIN: 'admin',
   DASHBOARD: 'dashboard',
-  APF: 'apf'
+  APF: 'apf',
+  HR: 'hr'
 };
-
-//done new
 
 function App() {
   const [currentPage, setCurrentPage] = useState(PAGES.FORM);
   const [showPinModal, setShowPinModal] = useState(false);
+  const [showHRLoginModal, setShowHRLoginModal] = useState(false);
+  const [hrUserEmail, setHRUserEmail] = useState(null);
   const [prefillData, setPrefillData] = useState(null);
 
   const handleAPFClick = () => {
@@ -33,6 +37,25 @@ function App() {
 
   const handlePinSuccess = () => {
     setCurrentPage(PAGES.APF);
+  };
+
+  const handleHRClick = () => {
+    if (hrUserEmail) {
+      // Already logged in
+      setCurrentPage(PAGES.HR);
+    } else {
+      setShowHRLoginModal(true);
+    }
+  };
+
+  const handleHRLoginSuccess = (email) => {
+    setHRUserEmail(email);
+    setCurrentPage(PAGES.HR);
+  };
+
+  const handleHRLogout = () => {
+    setHRUserEmail(null);
+    setCurrentPage(PAGES.FORM);
   };
 
   const handleSelectPrefill = (data) => {
@@ -52,6 +75,8 @@ function App() {
         return <Dashboard />;
       case PAGES.APF:
         return <APFList onSelectAgreement={handleSelectPrefill} />;
+      case PAGES.HR:
+        return <HRPage userEmail={hrUserEmail} onLogout={handleHRLogout} />;
       case PAGES.FORM:
       default:
         return <FormPage prefillData={prefillData} onReset={handleFormReset} />;
@@ -85,6 +110,13 @@ function App() {
             APF
           </button>
           <button
+            className={`nav-link ${currentPage === PAGES.HR ? 'active' : ''}`}
+            onClick={handleHRClick}
+          >
+            <FontAwesomeIcon icon={faUserTie} style={{ marginRight: '0.5rem' }} />
+            HR
+          </button>
+          <button
             className={`nav-link ${currentPage === PAGES.DASHBOARD ? 'active' : ''}`}
             onClick={() => setCurrentPage(PAGES.DASHBOARD)}
           >
@@ -110,6 +142,13 @@ function App() {
         onClose={() => setShowPinModal(false)}
         onSuccess={handlePinSuccess}
         title="Enter PIN for APF Access"
+      />
+
+      {/* HR Login Modal */}
+      <HRLoginModal
+        isOpen={showHRLoginModal}
+        onClose={() => setShowHRLoginModal(false)}
+        onSuccess={handleHRLoginSuccess}
       />
     </div>
   );
