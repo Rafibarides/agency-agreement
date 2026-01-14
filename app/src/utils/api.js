@@ -77,6 +77,16 @@ export async function getAgreementByRowNumber(rowNumber) {
   return apiRequest('getAgreementByRow', { rowNumber });
 }
 
+// Mark device as provisioned (ready for pickup)
+export async function markDeviceProvisioned(rowNumber, provisioned = true) {
+  return apiRequest('markDeviceProvisioned', { rowNumber, provisioned });
+}
+
+// Get all provisioned devices ready for pickup
+export async function getProvisionedDevices() {
+  return apiRequest('getProvisionedDevices');
+}
+
 // Company information
 export const COMPANY_INFO = {
   name: 'AMBER COURT AT HOME D/B/A WELLBOUND',
@@ -133,6 +143,8 @@ export default {
   getUnsignedAgreements,
   updateWithSignatures,
   getAgreementByRowNumber,
+  markDeviceProvisioned,
+  getProvisionedDevices,
   COMPANY_INFO,
   TITLE_OPTIONS,
   PROPERTY_ITEMS,

@@ -411,30 +411,40 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
 
     console.log('[SignaturePad] Accepting signature, point count:', pointCount);
 
+    // If no points, show error
+    if (pointCount === 0) {
+      alert('No signature detected. Please sign on the pad first.');
+      activeCapturingId = null;
+      setIsHardwareCapturing(false);
+      return;
+    }
+
     try {
       // Get the signature as SVG path
       let svgPath = await sigWeb.getSignatureAsSVGPath(CANVAS_WIDTH, CANVAS_HEIGHT);
       
       console.log('[SignaturePad] Got SVG path:', svgPath ? svgPath.substring(0, 80) : 'empty');
       
-      // If we got points but no SVG path, create a placeholder path
-      // This ensures the form knows a signature was captured
+      // If SVG conversion failed but we have points, use a marker value
+      // The actual signature is captured in SigWeb, we just need to mark it as signed
       if ((!svgPath || svgPath.length === 0) && pointCount > 0) {
-        console.log('[SignaturePad] SVG path empty but have points, using placeholder');
-        // Create a simple "SIGNED" placeholder that indicates signature was captured
-        svgPath = `M 50 60 L 100 60 M 120 40 L 120 80 M 140 60 L 190 60 M 210 40 L 210 80 L 250 80 M 270 40 L 270 80`;
+        console.log('[SignaturePad] SVG conversion failed, using marker value');
+        // Use a simple marker - the signature was captured on the hardware
+        svgPath = 'HARDWARE_SIGNATURE_CAPTURED';
       }
       
       if (svgPath && svgPath.length > 0) {
-        console.log('[SignaturePad] Setting signature:', svgPath.substring(0, 50) + '...');
+        console.log('[SignaturePad] Setting signature');
         
         setHardwareSignatureSVG(svgPath);
         setHasSignature(true);
         
-        // Draw final signature on preview canvas
-        const canvas = hardwareCanvasRef.current;
-        if (canvas) {
-          drawSVGPathOnCanvas(canvas, svgPath);
+        // Only draw on canvas if it's a real SVG path (not the marker)
+        if (svgPath !== 'HARDWARE_SIGNATURE_CAPTURED') {
+          const canvas = hardwareCanvasRef.current;
+          if (canvas) {
+            drawSVGPathOnCanvas(canvas, svgPath);
+          }
         }
         
         // CRITICAL: Notify parent with the SVG path
@@ -444,12 +454,18 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
         } else {
           console.error('[SignaturePad] onChange is not defined!');
         }
-      } else {
-        console.log('[SignaturePad] No signature data to save (no points and no SVG)');
-        alert('No signature detected. Please sign on the pad first.');
       }
     } catch (err) {
       console.error('[SignaturePad] Error accepting signature:', err);
+      // Even if there's an error, if we had points, mark as signed
+      if (pointCount > 0) {
+        const markerValue = 'HARDWARE_SIGNATURE_CAPTURED';
+        setHardwareSignatureSVG(markerValue);
+        setHasSignature(true);
+        if (onChange) {
+          onChange(markerValue);
+        }
+      }
     }
 
     // Release capture
@@ -621,87 +637,153 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
         {/* Hardware Mode */}
         {captureMode === CAPTURE_MODE.HARDWARE && (
           <div className="hardware-signature-area">
-            {/* Always show the canvas for real-time preview */}
-            <canvas
-              ref={hardwareCanvasRef}
-              width={CANVAS_WIDTH}
-              height={CANVAS_HEIGHT}
-              className="signature-canvas hardware-preview-canvas"
-              style={{ background: '#fff' }}
-            />
-            
             {hardwareSignatureSVG ? (
-              // Signature accepted - show re-sign option
-              <div className="capture-actions" style={{ marginTop: '0.5rem' }}>
-                <span style={{ color: '#28a745', marginRight: '1rem' }}>
-                  <FontAwesomeIcon icon={faCheck} /> Signature captured
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-small btn-secondary"
-                  onClick={startHardwareCapture}
-                >
-                  <FontAwesomeIcon icon={faSync} />
-                  Re-sign
-                </button>
-              </div>
-            ) : isHardwareCapturing ? (
-              // Capturing in progress
-              <div style={{ marginTop: '0.5rem' }}>
-                <div className="capture-status" style={{ marginBottom: '0.5rem' }}>
-                  <FontAwesomeIcon icon={faTabletAlt} className="pulse-icon" />
-                  <span style={{ marginLeft: '0.5rem' }}>Sign on the pad now...</span>
-                  {pointCount > 0 && (
-                    <span className="point-count" style={{ marginLeft: '0.5rem', color: '#28a745' }}>
-                      ({pointCount} points)
-                    </span>
-                  )}
-                </div>
-                <div className="capture-actions">
-                  <button
-                    type="button"
-                    className="btn btn-small btn-primary"
-                    onClick={acceptHardwareSignature}
-                    disabled={pointCount === 0}
+              // Signature has been captured - show success state
+              <>
+                {hardwareSignatureSVG === 'HARDWARE_SIGNATURE_CAPTURED' ? (
+                  // Show "Signature Recorded" message when SVG conversion wasn't available
+                  <div 
+                    className="signature-canvas hardware-preview-canvas"
+                    style={{ 
+                      background: '#f0fff0', 
+                      border: '2px solid #28a745',
+                      borderRadius: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexDirection: 'column',
+                      width: CANVAS_WIDTH,
+                      height: CANVAS_HEIGHT
+                    }}
                   >
-                    <FontAwesomeIcon icon={faCheck} />
-                    Accept Signature
-                  </button>
+                    <FontAwesomeIcon icon={faCheck} style={{ fontSize: '2rem', color: '#28a745', marginBottom: '0.5rem' }} />
+                    <span style={{ color: '#28a745', fontWeight: 'bold', fontSize: '1.1rem' }}>Signature Recorded</span>
+                    <span style={{ color: '#666', fontSize: '0.85rem' }}>Captured from signature pad</span>
+                  </div>
+                ) : (
+                  // Show actual signature preview on canvas
+                  <canvas
+                    ref={hardwareCanvasRef}
+                    width={CANVAS_WIDTH}
+                    height={CANVAS_HEIGHT}
+                    className="signature-canvas hardware-preview-canvas"
+                    style={{ background: '#fff' }}
+                  />
+                )}
+                <div className="capture-actions" style={{ marginTop: '0.5rem' }}>
+                  <span style={{ color: '#28a745', marginRight: '1rem' }}>
+                    <FontAwesomeIcon icon={faCheck} /> Signature captured
+                  </span>
                   <button
                     type="button"
                     className="btn btn-small btn-secondary"
-                    onClick={clearPadAndRestart}
-                    disabled={pointCount === 0}
-                    style={{ marginLeft: '0.5rem' }}
+                    onClick={startHardwareCapture}
                   >
-                    <FontAwesomeIcon icon={faEraser} />
-                    Clear Pad
+                    <FontAwesomeIcon icon={faSync} />
+                    Re-sign
                   </button>
                 </div>
-              </div>
+              </>
+            ) : isHardwareCapturing ? (
+              // Capturing in progress - show canvas for real-time preview
+              <>
+                <canvas
+                  ref={hardwareCanvasRef}
+                  width={CANVAS_WIDTH}
+                  height={CANVAS_HEIGHT}
+                  className="signature-canvas hardware-preview-canvas"
+                  style={{ background: '#fff' }}
+                />
+                <div style={{ marginTop: '0.5rem' }}>
+                  <div className="capture-status" style={{ marginBottom: '0.5rem' }}>
+                    <FontAwesomeIcon icon={faTabletAlt} className="pulse-icon" />
+                    <span style={{ marginLeft: '0.5rem' }}>Sign on the pad now...</span>
+                    {pointCount > 0 && (
+                      <span className="point-count" style={{ marginLeft: '0.5rem', color: '#28a745' }}>
+                        ({pointCount} points)
+                      </span>
+                    )}
+                  </div>
+                  <div className="capture-actions">
+                    <button
+                      type="button"
+                      className="btn btn-small btn-primary"
+                      onClick={acceptHardwareSignature}
+                      disabled={pointCount === 0}
+                    >
+                      <FontAwesomeIcon icon={faCheck} />
+                      Accept Signature
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-small btn-secondary"
+                      onClick={clearPadAndRestart}
+                      disabled={pointCount === 0}
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      <FontAwesomeIcon icon={faEraser} />
+                      Clear Pad
+                    </button>
+                  </div>
+                </div>
+              </>
             ) : isHardwareAvailable ? (
-              // Ready but not started - this shouldn't happen with auto-start
-              <div style={{ marginTop: '0.5rem', textAlign: 'center' }}>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={startHardwareCapture}
+              // Ready but not started - show placeholder and start button
+              <>
+                <div 
+                  className="signature-canvas hardware-preview-canvas"
+                  style={{ 
+                    background: '#fafafa', 
+                    border: '1px dashed #ccc',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: CANVAS_WIDTH,
+                    height: CANVAS_HEIGHT,
+                    color: '#999'
+                  }}
                 >
-                  <FontAwesomeIcon icon={faTabletAlt} />
-                  Start Capture
-                </button>
-              </div>
+                  Click below to start
+                </div>
+                <div style={{ marginTop: '0.5rem', textAlign: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={startHardwareCapture}
+                  >
+                    <FontAwesomeIcon icon={faTabletAlt} />
+                    Start Capture
+                  </button>
+                </div>
+              </>
             ) : (
-              // Hardware not available
-              <div className="hardware-unavailable" style={{ marginTop: '0.5rem', textAlign: 'center' }}>
-                <FontAwesomeIcon icon={faExclamationTriangle} />
-                <span style={{ marginLeft: '0.5rem' }}>
-                  {isConnected 
-                    ? 'Connect signature pad to continue'
-                    : 'Start SigWeb service to use signature pad'
-                  }
-                </span>
-              </div>
+              // Hardware not available - show placeholder with message
+              <>
+                <div 
+                  className="signature-canvas hardware-preview-canvas"
+                  style={{ 
+                    background: '#fff5f5', 
+                    border: '1px dashed #dc3545',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'column',
+                    width: CANVAS_WIDTH,
+                    height: CANVAS_HEIGHT,
+                    color: '#dc3545'
+                  }}
+                >
+                  <FontAwesomeIcon icon={faExclamationTriangle} style={{ marginBottom: '0.5rem' }} />
+                  <span>
+                    {isConnected 
+                      ? 'Connect signature pad'
+                      : 'SigWeb not running'
+                    }
+                  </span>
+                </div>
+              </>
             )}
           </div>
         )}

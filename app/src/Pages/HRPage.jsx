@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faUserPlus, 
@@ -6,10 +6,12 @@ import {
   faSpinner,
   faCheck,
   faSignOutAlt,
-  faQrcode
+  faQrcode,
+  faBox,
+  faSync
 } from '@fortawesome/free-solid-svg-icons';
 import BarcodeModal from '../Components/BarcodeModal';
-import { holdForSignature, TITLE_OPTIONS } from '../utils/api';
+import { holdForSignature, getProvisionedDevices, TITLE_OPTIONS } from '../utils/api';
 import colors from '../utils/colors';
 
 const HRPage = ({ userEmail, onLogout }) => {
@@ -21,6 +23,29 @@ const HRPage = ({ userEmail, onLogout }) => {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   const [barcodeData, setBarcodeData] = useState({ rowNumber: null, name: '' });
+  
+  // Provisioned devices state
+  const [provisionedDevices, setProvisionedDevices] = useState([]);
+  const [loadingProvisioned, setLoadingProvisioned] = useState(false);
+
+  // Fetch provisioned devices on mount
+  useEffect(() => {
+    fetchProvisionedDevices();
+  }, []);
+
+  const fetchProvisionedDevices = async () => {
+    setLoadingProvisioned(true);
+    try {
+      const result = await getProvisionedDevices();
+      if (result.success) {
+        setProvisionedDevices(result.devices || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch provisioned devices:', err);
+    } finally {
+      setLoadingProvisioned(false);
+    }
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -96,7 +121,7 @@ const HRPage = ({ userEmail, onLogout }) => {
   };
 
   return (
-    <div className="page-container">
+    <div className="page-container" style={{ maxWidth: '1100px' }}>
       {/* Header with logout */}
       <div style={{
         display: 'flex',
@@ -141,8 +166,10 @@ const HRPage = ({ userEmail, onLogout }) => {
         </button>
       </div>
 
-      {/* Main Content */}
-      <div className="form-section">
+      {/* Main Content - Two Column Layout */}
+      <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        {/* Left Column - Form */}
+        <div className="form-section" style={{ flex: '1 1 400px', minWidth: '320px' }}>
         <h2 className="form-section-title">
           <FontAwesomeIcon icon={faUserPlus} />
           Request Device for New Hire
@@ -210,42 +237,147 @@ const HRPage = ({ userEmail, onLogout }) => {
                 </>
               ) : (
                 <>
-                  <FontAwesomeIcon icon={faQrcode} />
-                  Generate Barcode
+                  <FontAwesomeIcon icon={faUserPlus} />
+                  Request Device
                 </>
               )}
             </button>
           </div>
         </form>
+        </div>
 
-        {/* Info Card */}
-        <div style={{
-          marginTop: '2.5rem',
+        {/* Right Column - Provisioned Devices */}
+        <div style={{ 
+          flex: '0 0 280px',
+          minWidth: '250px',
+          background: 'var(--glass-background)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          border: '1px solid var(--glass-border)',
+          borderRadius: '16px',
           padding: '1.25rem',
-          background: `linear-gradient(135deg, ${colors.accentPink}10, ${colors.softPink}08)`,
-          borderRadius: '10px',
-          border: `1px solid ${colors.accentPink}30`
+          maxHeight: '500px',
+          display: 'flex',
+          flexDirection: 'column'
         }}>
-          <h4 style={{ 
-            margin: '0 0 0.75rem', 
-            color: colors.accentPink,
-            fontSize: '0.95rem',
-            fontWeight: 600
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            marginBottom: '1rem',
+            paddingBottom: '0.75rem',
+            borderBottom: `1px solid rgba(255, 183, 77, 0.2)`
           }}>
-            How it works
-          </h4>
-          <ol style={{ 
-            margin: 0, 
-            paddingLeft: '1.25rem', 
-            color: colors.textSecondary,
-            fontSize: '0.9rem',
-            lineHeight: 1.8
+            <h3 style={{ 
+              margin: 0, 
+              fontSize: '0.9rem', 
+              fontWeight: 600,
+              color: '#FFB74D',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <FontAwesomeIcon icon={faBox} />
+              Ready for Pickup
+            </h3>
+            <button
+              onClick={fetchProvisionedDevices}
+              disabled={loadingProvisioned}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: colors.textMuted,
+                cursor: loadingProvisioned ? 'wait' : 'pointer',
+                padding: '0.35rem',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => !loadingProvisioned && (e.currentTarget.style.color = '#FFB74D')}
+              onMouseOut={(e) => e.currentTarget.style.color = colors.textMuted}
+              title="Refresh list"
+            >
+              <FontAwesomeIcon icon={faSync} spin={loadingProvisioned} size="sm" />
+            </button>
+          </div>
+
+          <div style={{ 
+            flex: 1, 
+            overflowY: 'auto',
+            marginRight: '-0.5rem',
+            paddingRight: '0.5rem'
           }}>
-            <li>Enter the new hire's name and title above</li>
-            <li>Print or save the generated barcode</li>
-            <li>Give the barcode to IT or the new hire</li>
-            <li>IT scans the barcode to load and complete the form</li>
-          </ol>
+            {loadingProvisioned ? (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: '2rem 1rem',
+                color: colors.textMuted,
+                fontSize: '0.85rem'
+              }}>
+                <FontAwesomeIcon icon={faSpinner} spin style={{ marginRight: '0.5rem' }} />
+                Loading...
+              </div>
+            ) : provisionedDevices.length === 0 ? (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: '2rem 1rem',
+                color: colors.textMuted,
+                fontSize: '0.85rem'
+              }}>
+                No devices ready for pickup
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {provisionedDevices.map((device, index) => (
+                  <div
+                    key={device.rowNumber || index}
+                    style={{
+                      padding: '0.75rem',
+                      background: 'rgba(255, 183, 77, 0.08)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 183, 77, 0.15)'
+                    }}
+                  >
+                    <div style={{ 
+                      fontWeight: 600, 
+                      fontSize: '0.9rem',
+                      color: colors.textPrimary,
+                      marginBottom: '0.25rem'
+                    }}>
+                      {device.Name || 'Unknown'}
+                    </div>
+                    <div style={{ 
+                      fontSize: '0.75rem', 
+                      color: colors.textMuted,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.15rem'
+                    }}>
+                      {device.Title && (
+                        <span>{device.Title.split('–')[0].trim()}</span>
+                      )}
+                      {device['Serial Number'] && (
+                        <span>S/N: {device['Serial Number']}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          <div style={{ 
+            marginTop: '0.75rem', 
+            paddingTop: '0.75rem',
+            borderTop: '1px solid var(--glass-border)',
+            fontSize: '0.7rem',
+            color: colors.textMuted,
+            textAlign: 'center'
+          }}>
+            {provisionedDevices.length} device{provisionedDevices.length !== 1 ? 's' : ''} provisioned
+          </div>
         </div>
       </div>
 

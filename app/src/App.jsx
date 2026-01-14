@@ -130,6 +130,16 @@ function App() {
             <FontAwesomeIcon icon={faShieldAlt} style={{ marginRight: '0.5rem' }} />
             Admin
           </button>
+          {/* HR User Avatar - shows when logged in */}
+          {hrUserEmail && (
+            <div 
+              className="nav-avatar"
+              title={hrUserEmail}
+              onClick={() => setCurrentPage(PAGES.HR)}
+            >
+              {hrUserEmail.substring(0, 2).toUpperCase()}
+            </div>
+          )}
         </div>
       </nav>
 

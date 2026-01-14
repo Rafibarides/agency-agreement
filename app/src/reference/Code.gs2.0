@@ -18,6 +18,11 @@ const CONFIG = {
   ADMIN_EMAILS: [
     'rafibarides@gmail.com',
     // Add more email addresses as needed
+  ],
+  // HR EMAIL ADDRESSES (for provisioning notifications)
+  HR_EMAILS: [
+    // Add HR email addresses here to receive provisioning notifications
+    // e.g., 'hr@wellbound.com'
   ]
 };
 
@@ -85,6 +90,14 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(getAgreementByRowNumber(data.rowNumber)))
           .setMimeType(ContentService.MimeType.JSON);
       
+      case 'markDeviceProvisioned':
+        return ContentService.createTextOutput(JSON.stringify(markDeviceProvisioned(data.rowNumber, data.provisioned)))
+          .setMimeType(ContentService.MimeType.JSON);
+      
+      case 'getProvisionedDevices':
+        return ContentService.createTextOutput(JSON.stringify(getProvisionedDevices()))
+          .setMimeType(ContentService.MimeType.JSON);
+      
       default:
         throw new Error('Invalid action');
     }
@@ -133,7 +146,8 @@ function initializeSpreadsheet() {
       'Supervisor Signature Date',
       'Supervisor Signature',
       'Send Copy to Employee',
-      'Employee Email'
+      'Employee Email',
+      'Provisioned'
     ];
     
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
@@ -173,7 +187,8 @@ function submitAgreement(data) {
       data.supervisorSignatureDate || new Date(),
       data.supervisorSignature || '',
       data.sendCopyToEmployee || false,
-      data.employeeEmail || ''
+      data.employeeEmail || '',
+      false // Provisioned - default false
     ];
     
     sheet.appendRow(row);
@@ -367,7 +382,8 @@ function holdForSignature(data) {
       '', // Supervisor Signature Date - empty
       '', // Supervisor Signature - empty
       false, // Send Copy to Employee
-      '' // Employee Email
+      '', // Employee Email
+      false // Provisioned - default false
     ];
     
     sheet.appendRow(row);
@@ -573,6 +589,188 @@ function updateWithSignatures(data) {
       error: error.message
     };
   }
+}
+
+// ============================================
+// DEVICE PROVISIONING FUNCTIONS
+// ============================================
+
+/**
+ * Mark a device as provisioned (ready for pickup)
+ * This notifies HR that the device is ready
+ */
+function markDeviceProvisioned(rowNumber, provisioned) {
+  try {
+    if (!rowNumber) {
+      return { success: false, error: 'Row number is required' };
+    }
+    
+    const sheet = initializeSpreadsheet();
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    
+    // Find or create Provisioned column
+    let provisionedIndex = headers.indexOf('Provisioned');
+    
+    if (provisionedIndex === -1) {
+      // Add the Provisioned column if it doesn't exist
+      provisionedIndex = headers.length;
+      sheet.getRange(1, provisionedIndex + 1).setValue('Provisioned');
+    }
+    
+    // Validate row exists
+    const rowIndex = parseInt(rowNumber);
+    if (rowIndex < 2 || rowIndex > sheet.getLastRow()) {
+      return { success: false, error: 'Invalid row number' };
+    }
+    
+    // Get the agreement data for notification
+    const rowData = sheet.getRange(rowIndex, 1, 1, headers.length).getValues()[0];
+    const agreement = {};
+    headers.forEach((header, index) => {
+      agreement[header] = rowData[index];
+    });
+    agreement.rowNumber = rowIndex;
+    
+    // Update the Provisioned status
+    const newStatus = provisioned !== false; // Default to true if not explicitly false
+    sheet.getRange(rowIndex, provisionedIndex + 1).setValue(newStatus);
+    
+    // Send notification to HR if marking as provisioned
+    if (newStatus) {
+      try {
+        sendProvisionedNotification(agreement);
+      } catch(emailError) {
+        Logger.log('HR notification failed: ' + emailError.message);
+        // Don't fail the operation if email fails
+      }
+    }
+    
+    return {
+      success: true,
+      message: newStatus ? 'Device marked as provisioned' : 'Device unmarked as provisioned',
+      rowNumber: rowIndex,
+      provisioned: newStatus
+    };
+  } catch(error) {
+    Logger.log('markDeviceProvisioned error: ' + error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Get all provisioned devices that are still unsigned (ready for pickup)
+ */
+function getProvisionedDevices() {
+  try {
+    const sheet = initializeSpreadsheet();
+    const data = sheet.getDataRange().getValues();
+    
+    if (data.length <= 1) {
+      return { success: true, devices: [] };
+    }
+    
+    const headers = data[0];
+    const devices = [];
+    
+    // Find column indices
+    const empSigIndex = headers.indexOf('Employee Signature');
+    const supSigIndex = headers.indexOf('Supervisor Signature');
+    const provisionedIndex = headers.indexOf('Provisioned');
+    
+    // If required columns don't exist, return empty
+    if (empSigIndex === -1 || supSigIndex === -1) {
+      Logger.log('Required columns not found');
+      return { success: true, devices: [] };
+    }
+    
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      
+      // Check if provisioned
+      const isProvisioned = provisionedIndex !== -1 && 
+        (row[provisionedIndex] === true || row[provisionedIndex] === 'TRUE');
+      
+      if (!isProvisioned) continue;
+      
+      // Check if still unsigned (no signatures)
+      const empSig = row[empSigIndex];
+      const supSig = row[supSigIndex];
+      const isUnsigned = (!empSig || empSig.toString().trim() === '') && 
+                         (!supSig || supSig.toString().trim() === '');
+      
+      // Only include if provisioned AND still unsigned
+      if (isUnsigned) {
+        const device = {};
+        headers.forEach((header, index) => {
+          device[header] = row[index];
+        });
+        device.rowNumber = i + 1;
+        devices.push(device);
+      }
+    }
+    
+    return {
+      success: true,
+      devices: devices.reverse() // Most recent first
+    };
+  } catch(error) {
+    Logger.log('getProvisionedDevices error: ' + error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Send notification to HR when a device is marked as provisioned
+ */
+function sendProvisionedNotification(agreement) {
+  // Skip if no HR emails configured
+  if (!CONFIG.HR_EMAILS || CONFIG.HR_EMAILS.length === 0) {
+    Logger.log('No HR emails configured for provisioning notifications');
+    return;
+  }
+  
+  const subject = `Device Ready for Pickup - ${agreement.Name || 'Unknown'}`;
+  
+  const body = `
+A device has been provisioned and is ready for pickup.
+
+EMPLOYEE INFORMATION:
+Name: ${agreement.Name || 'N/A'}
+Title: ${agreement.Title || 'N/A'}
+Worker ID: ${agreement['Worker ID'] || 'N/A'}
+
+DEVICE DETAILS:
+Device: ${agreement['Device Name'] || 'N/A'}
+Serial Number: ${agreement['Serial Number'] || 'N/A'}
+Esper ID: ${agreement['Esper Identifier Code'] || 'N/A'}
+
+This device is ready for the employee to pick up and sign the property agreement.
+
+---
+${CONFIG.COMPANY_INFO.name}
+${CONFIG.COMPANY_INFO.address}
+${CONFIG.COMPANY_INFO.city}
+${CONFIG.COMPANY_INFO.phone}
+  `.trim();
+  
+  CONFIG.HR_EMAILS.forEach(email => {
+    try {
+      MailApp.sendEmail({
+        to: email,
+        subject: subject,
+        body: body
+      });
+      Logger.log('HR notification sent to: ' + email);
+    } catch(e) {
+      Logger.log('Failed to send HR notification to ' + email + ': ' + e.message);
+    }
+  });
 }
 
 // ============================================
@@ -1089,4 +1287,68 @@ function testEmailSending() {
     Logger.log('Error: ' + e.message);
     Logger.log('Stack: ' + e.stack);
   }
+}
+
+// Test provisioning functions
+function testMarkProvisioned() {
+  Logger.log('=== PROVISIONING TEST ===');
+  
+  // Get the last row number for testing
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEET_NAME);
+  if (!sheet) {
+    Logger.log('Sheet not found');
+    return;
+  }
+  
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    Logger.log('No data rows to test with');
+    return;
+  }
+  
+  // Test marking as provisioned
+  Logger.log('Marking row ' + lastRow + ' as provisioned...');
+  const result = markDeviceProvisioned(lastRow, true);
+  Logger.log('Result: ' + JSON.stringify(result));
+  
+  // Test getting provisioned devices
+  Logger.log('Getting provisioned devices...');
+  const devices = getProvisionedDevices();
+  Logger.log('Provisioned devices: ' + JSON.stringify(devices));
+}
+
+/**
+ * Migration utility: Add Provisioned column to existing spreadsheet
+ * Run this once if you have an existing spreadsheet without the Provisioned column
+ */
+function addProvisionedColumn() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEET_NAME);
+  if (!sheet) {
+    Logger.log('Sheet not found');
+    return;
+  }
+  
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  
+  if (headers.indexOf('Provisioned') !== -1) {
+    Logger.log('Provisioned column already exists');
+    return;
+  }
+  
+  // Add the header
+  const newColIndex = headers.length + 1;
+  sheet.getRange(1, newColIndex).setValue('Provisioned');
+  
+  // Set all existing rows to FALSE
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    const range = sheet.getRange(2, newColIndex, lastRow - 1, 1);
+    const values = [];
+    for (let i = 0; i < lastRow - 1; i++) {
+      values.push([false]);
+    }
+    range.setValues(values);
+  }
+  
+  Logger.log('Provisioned column added successfully');
 }

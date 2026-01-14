@@ -8,15 +8,20 @@ import {
   faCopy,
   faCheck,
   faUndo,
-  faTimes
+  faTimes,
+  faBox,
+  faSpinner
 } from '@fortawesome/free-solid-svg-icons';
 import Preview from './Preview';
+import { markDeviceProvisioned } from '../utils/api';
 
 const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
   const [selectedAgreement, setSelectedAgreement] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [copiedField, setCopiedField] = useState(null);
   const [returnedDevices, setReturnedDevices] = useState({});
+  const [provisionedDevices, setProvisionedDevices] = useState({});
+  const [provisioningRow, setProvisioningRow] = useState(null);
   const [returnModal, setReturnModal] = useState(null);
   const itemsPerPage = 10;
 
@@ -60,6 +65,54 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
       return updated;
     });
     setReturnModal(null);
+  };
+
+  // Check if agreement is unsigned (no employee or supervisor signature)
+  const isUnsigned = (agreement) => {
+    return !agreement['Employee Signature'] && !agreement['Supervisor Signature'];
+  };
+
+  // Check if device is provisioned (either from backend or local state)
+  const isProvisioned = (agreement) => {
+    const rowId = agreement.rowNumber;
+    return agreement.Provisioned === true || agreement.Provisioned === 'TRUE' || provisionedDevices[rowId];
+  };
+
+  const handleMarkProvisioned = async (rowNumber) => {
+    setProvisioningRow(rowNumber);
+    try {
+      const result = await markDeviceProvisioned(rowNumber, true);
+      if (result.success) {
+        setProvisionedDevices(prev => ({
+          ...prev,
+          [rowNumber]: true
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to mark as provisioned:', err);
+    } finally {
+      setProvisioningRow(null);
+      setReturnModal(null);
+    }
+  };
+
+  const handleUnmarkProvisioned = async (rowNumber) => {
+    setProvisioningRow(rowNumber);
+    try {
+      const result = await markDeviceProvisioned(rowNumber, false);
+      if (result.success) {
+        setProvisionedDevices(prev => {
+          const updated = { ...prev };
+          delete updated[rowNumber];
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error('Failed to unmark as provisioned:', err);
+    } finally {
+      setProvisioningRow(null);
+      setReturnModal(null);
+    }
   };
 
   // Pagination logic
@@ -148,12 +201,16 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
                 {paginatedAgreements.map((agreement, index) => {
                   const rowId = agreement.rowNumber || index;
                   const isReturned = returnedDevices[rowId];
+                  const unsigned = isUnsigned(agreement);
+                  const provisioned = isProvisioned(agreement);
+                  // Show "Ready for Pickup" only if provisioned AND still unsigned
+                  const showReadyTag = provisioned && unsigned;
                   
                   return (
                     <tr 
                       key={rowId}
                       onDoubleClick={() => handleRowDoubleClick(agreement)}
-                      className={isReturned ? 'row-returned' : ''}
+                      className={`${isReturned ? 'row-returned' : ''} ${showReadyTag ? 'row-provisioned' : ''}`}
                       style={{ cursor: 'pointer', position: 'relative' }}
                     >
                       <td>{formatDate(agreement.Timestamp)}</td>
@@ -164,6 +221,9 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
                         />
                         {isReturned && (
                           <span className="returned-badge">Returned</span>
+                        )}
+                        {showReadyTag && (
+                          <span className="provisioned-badge">Ready for Pickup</span>
                         )}
                       </td>
                       <td>{agreement.Title ? agreement.Title.split('–')[0].trim() : '-'}</td>
@@ -255,7 +315,7 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="return-modal-header">
-              <h4>Device Return Status</h4>
+              <h4>Device Options</h4>
               <button 
                 className="modal-close"
                 onClick={() => setReturnModal(null)}
@@ -269,7 +329,43 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
                 {returnModal['Serial Number'] || 'No serial number'}
               </p>
             </div>
-            <div className="return-modal-actions">
+            <div className="return-modal-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
+              {/* Device Provisioned option - only for unsigned entries */}
+              {isUnsigned(returnModal) && (
+                <button 
+                  className={`btn ${isProvisioned(returnModal) ? 'btn-secondary' : 'btn-provisioned'}`}
+                  onClick={() => isProvisioned(returnModal) 
+                    ? handleUnmarkProvisioned(returnModal.rowNumber)
+                    : handleMarkProvisioned(returnModal.rowNumber)
+                  }
+                  disabled={provisioningRow === returnModal.rowNumber}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  {provisioningRow === returnModal.rowNumber ? (
+                    <>
+                      <FontAwesomeIcon icon={faSpinner} spin />
+                      Processing...
+                    </>
+                  ) : isProvisioned(returnModal) ? (
+                    <>
+                      <FontAwesomeIcon icon={faUndo} />
+                      Unmark Provisioned
+                    </>
+                  ) : (
+                    <>
+                      <FontAwesomeIcon icon={faBox} />
+                      <span>
+                        Device Provisioned
+                        <small style={{ display: 'block', fontSize: '0.7rem', opacity: 0.8, fontWeight: 400 }}>
+                          Mark ready for pickup and notify HR
+                        </small>
+                      </span>
+                    </>
+                  )}
+                </button>
+              )}
+              
+              {/* Return status option */}
               {returnedDevices[returnModal.rowNumber] ? (
                 <button 
                   className="btn btn-secondary"
