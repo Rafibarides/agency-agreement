@@ -4,7 +4,7 @@ import {
   faTimes, 
   faDownload, 
   faPrint,
-  faQrcode,
+  faBarcode,
   faUser,
   faIdCard,
   faEnvelope
@@ -74,14 +74,9 @@ const BarcodeModal = ({ isOpen, onClose, rowNumber, name, workerId, requestedBy 
             border-radius: 12px;
             max-width: 350px;
           }
-          .barcode-img {
-            width: 200px;
-            height: 200px;
-            margin-bottom: 20px;
-          }
           .barcode-1d {
-            width: 250px;
-            height: 80px;
+            max-width: 280px;
+            height: auto;
             margin-bottom: 20px;
           }
           .name {
@@ -117,7 +112,7 @@ const BarcodeModal = ({ isOpen, onClose, rowNumber, name, workerId, requestedBy 
       </head>
       <body>
         <div class="barcode-card">
-          <img src="${barcodeUrl}" alt="QR Code" class="barcode-img" />
+          <img src="${barcode1DUrl}" alt="Barcode" class="barcode-1d" />
           <div class="name">${name}</div>
           ${isHRRequest 
             ? `<div class="worker-id">New Hire - Device Request</div>`
@@ -148,7 +143,7 @@ const BarcodeModal = ({ isOpen, onClose, rowNumber, name, workerId, requestedBy 
       >
         <div className="modal-header">
           <h3 className="modal-title">
-            <FontAwesomeIcon icon={faQrcode} style={{ marginRight: '0.5rem' }} />
+            <FontAwesomeIcon icon={faBarcode} style={{ marginRight: '0.5rem' }} />
             Form Barcode Generated
           </h3>
           <button className="modal-close" onClick={onClose}>
@@ -158,12 +153,13 @@ const BarcodeModal = ({ isOpen, onClose, rowNumber, name, workerId, requestedBy 
         
         <div className="modal-body" style={{ textAlign: 'center' }}>
           <div ref={printRef} className="barcode-content">
-            {/* QR Code */}
-            <div className="barcode-qr-container">
+            {/* 1D Barcode (Primary) */}
+            <div className="barcode-1d-container" style={{ marginBottom: '1rem' }}>
               <img 
-                src={barcodeUrl} 
-                alt="QR Code" 
-                className="barcode-qr-image"
+                src={barcode1DUrl} 
+                alt="Barcode" 
+                className="barcode-1d-image"
+                style={{ maxWidth: '280px', height: 'auto' }}
               />
             </div>
             
@@ -195,15 +191,15 @@ const BarcodeModal = ({ isOpen, onClose, rowNumber, name, workerId, requestedBy 
               {barcodeData}
             </div>
             
-            {/* 1D Barcode Alternative */}
-            <div className="barcode-1d-container">
+            {/* QR Code Alternative */}
+            <div className="barcode-qr-alt-container" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: `1px solid ${colors.glassBorder}` }}>
               <p style={{ fontSize: '0.8rem', color: colors.textMuted, marginBottom: '0.5rem' }}>
-                Alternative (1D Barcode):
+                Alternative (QR Code):
               </p>
               <img 
-                src={barcode1DUrl} 
-                alt="1D Barcode" 
-                className="barcode-1d-image"
+                src={barcodeUrl} 
+                alt="QR Code" 
+                style={{ width: '100px', height: '100px' }}
               />
             </div>
           </div>

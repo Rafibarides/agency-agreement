@@ -5,9 +5,11 @@
  * SigWeb runs as a local service on port 47289 (HTTPS) or 47290 (HTTP)
  * Requires SigWeb to be installed and running on the client machine
  * 
- * IMPORTANT: For HTTPS pages, the browser must first accept SigWeb's self-signed
- * certificate by visiting https://localhost:47289/SigWeb/TabletState directly.
+ * VERSION: 2.0 - HTTP First (2024-01-14)
  */
+
+// Log version on load to verify deployment
+console.log('[SigWeb] Module loaded - Version 2.0 (HTTP First)');
 
 const SIGWEB_CONFIG = {
   // Default SigWeb service ports
@@ -73,6 +75,8 @@ async function fetchWithTimeout(url, options = {}, timeout = SIGWEB_CONFIG.timeo
 async function testEndpoint(protocol, port) {
   const url = `${protocol}://localhost:${port}/SigWeb/TabletState`;
   
+  console.log(`[SigWeb] Testing: ${url}`);
+  
   try {
     const response = await fetchWithTimeout(url, {
       method: 'GET',
@@ -83,14 +87,19 @@ async function testEndpoint(protocol, port) {
       }
     });
     
+    console.log(`[SigWeb] Response status: ${response.status} ${response.statusText}`);
+    
     if (response.ok) {
       const state = await response.text();
+      console.log(`[SigWeb] Response body: "${state.trim()}"`);
       return { success: true, state: state.trim(), error: null };
     } else {
       return { success: false, state: '', error: `HTTP ${response.status}: ${response.statusText}` };
     }
   } catch (error) {
     // Provide detailed error info for debugging
+    console.log(`[SigWeb] Fetch error:`, error.name, error.message);
+    
     let errorMsg = error.message || 'Unknown error';
     
     if (error.name === 'AbortError') {
@@ -98,9 +107,9 @@ async function testEndpoint(protocol, port) {
     } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
       // This is usually CORS or network error
       if (protocol === 'https') {
-        errorMsg = 'HTTPS connection failed - certificate may need to be accepted in browser';
+        errorMsg = 'HTTPS failed - SSL/certificate error';
       } else {
-        errorMsg = 'Connection failed - CORS error or SigWeb not running';
+        errorMsg = 'HTTP failed - blocked or SigWeb not running';
       }
     }
     
@@ -117,23 +126,26 @@ export async function checkSigWebAvailability() {
   const isPageHTTPS = typeof window !== 'undefined' && window.location.protocol === 'https:';
   const errors = [];
   
-  // Try both endpoints - modern Chrome/Edge allow HTTP to localhost even from HTTPS pages
-  // This is a special "localhost" exception in mixed content rules
-  // Try HTTP first since it's more reliable (HTTPS requires certificate setup)
+  console.log('[SigWeb] ====== CONNECTION CHECK START ======');
+  console.log('[SigWeb] Page protocol:', window.location.protocol);
+  console.log('[SigWeb] Will try HTTP (47290) first, then HTTPS (47289)');
+  
+  // CRITICAL: Try HTTP first - it works without certificate setup
+  // Modern Chrome allows HTTP to localhost even from HTTPS pages
   const endpoints = [
-    { protocol: 'http', port: SIGWEB_CONFIG.httpPort },
-    { protocol: 'https', port: SIGWEB_CONFIG.httpsPort }
+    { protocol: 'http', port: 47290 },  // HTTP FIRST!
+    { protocol: 'https', port: 47289 }  // HTTPS second (requires cert)
   ];
   
-  console.log('[SigWeb] Checking availability...', { isPageHTTPS, endpoints });
-  
-  for (const endpoint of endpoints) {
-    console.log(`[SigWeb] Trying ${endpoint.protocol}://localhost:${endpoint.port}...`);
+  for (let i = 0; i < endpoints.length; i++) {
+    const endpoint = endpoints[i];
+    console.log(`[SigWeb] Attempt ${i + 1}/${endpoints.length}: ${endpoint.protocol}://localhost:${endpoint.port}/SigWeb/TabletState`);
     
     const result = await testEndpoint(endpoint.protocol, endpoint.port);
     
     if (result.success) {
-      console.log(`[SigWeb] Connected via ${endpoint.protocol}:${endpoint.port}, tablet state: ${result.state}`);
+      console.log(`[SigWeb] ✓ SUCCESS! Connected via ${endpoint.protocol}:${endpoint.port}`);
+      console.log(`[SigWeb] Tablet state: ${result.state} (1=connected, 0=disconnected)`);
       
       sigWebConnection = {
         isConnected: true,
@@ -151,14 +163,15 @@ export async function checkSigWebAvailability() {
         error: null
       };
     } else {
-      console.warn(`[SigWeb] ${endpoint.protocol}:${endpoint.port} failed:`, result.error);
+      console.warn(`[SigWeb] ✗ FAILED ${endpoint.protocol}:${endpoint.port} -`, result.error);
       errors.push(`${endpoint.protocol}:${endpoint.port} - ${result.error}`);
     }
   }
   
   // All endpoints failed
   const combinedError = errors.join('; ');
-  console.error('[SigWeb] All connection attempts failed:', combinedError);
+  console.error('[SigWeb] ====== ALL ATTEMPTS FAILED ======');
+  console.error('[SigWeb] Errors:', combinedError);
   
   sigWebConnection = {
     isConnected: false,
@@ -171,14 +184,18 @@ export async function checkSigWebAvailability() {
   // Provide helpful error message based on what failed
   let helpfulError = 'SigWeb not detected. Ensure SigWeb service is running.';
   
-  // Check if it's likely a mixed content issue (HTTP failed with network error from HTTPS page)
-  const httpFailed = errors.find(e => e.includes('http:47290'));
-  const httpsMisconfigured = errors.find(e => e.includes('https:47289') && e.includes('SSL'));
+  // Check specific failure patterns
+  const httpError = errors.find(e => e.includes('http:47290'));
+  const httpsError = errors.find(e => e.includes('https:47289'));
   
-  if (isPageHTTPS && httpFailed && httpFailed.includes('Failed to fetch')) {
-    helpfulError = 'Mixed content blocked. Your browser may not allow HTTP connections to localhost from this HTTPS site. Try accessing the app via HTTP instead, or configure SigWeb HTTPS.';
-  } else if (httpsMisconfigured) {
-    helpfulError = 'SigWeb HTTPS not configured. The HTTP connection may be blocked by your browser. Check SigWeb settings.';
+  if (httpError && httpError.includes('Failed to fetch')) {
+    if (isPageHTTPS) {
+      helpfulError = 'Mixed content blocked by browser. Try: 1) Open http://localhost:47290/SigWeb/TabletState directly to verify SigWeb is running, or 2) Access this app via HTTP instead of HTTPS.';
+    } else {
+      helpfulError = 'Could not connect to SigWeb. Verify the service is running at http://localhost:47290';
+    }
+  } else if (httpsError && httpsError.includes('SSL')) {
+    helpfulError = 'SigWeb HTTPS endpoint not working. HTTP connection also failed - check if SigWeb service is running.';
   }
   
   return { 
