@@ -11,7 +11,7 @@ import {
   faSync,
   faSpinner
 } from '@fortawesome/free-solid-svg-icons';
-import { useTopazSignature, CONNECTION_TYPE } from '../hooks/useTopazSignature';
+import * as sigWeb from '../utils/sigweb';
 
 // Signature capture modes
 const CAPTURE_MODE = {
@@ -19,13 +19,23 @@ const CAPTURE_MODE = {
   HARDWARE: 'hardware'   // Topaz signature pad
 };
 
-// Canvas dimensions (matches original)
+// Canvas dimensions
 const CANVAS_WIDTH = 400;
 const CANVAS_HEIGHT = 120;
 
+// Global state to track which SignaturePad is currently capturing
+// This prevents multiple pads from capturing at the same time
+let activeCapturingId = null;
+let instanceCounter = 0;
+
 const SignaturePad = ({ label, onChange, enableHardware = true }) => {
+  // Unique ID for this instance
+  const instanceId = useRef(++instanceCounter);
+  
   const canvasRef = useRef(null);
   const hardwareCanvasRef = useRef(null);
+  const previewStopRef = useRef(null);
+  
   const [isDrawing, setIsDrawing] = useState(false);
   const [paths, setPaths] = useState([]);
   const [currentPath, setCurrentPath] = useState([]);
@@ -33,54 +43,52 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
   const [captureMode, setCaptureMode] = useState(CAPTURE_MODE.CANVAS);
   const [hardwareSignatureSVG, setHardwareSignatureSVG] = useState('');
   const [isHardwareCapturing, setIsHardwareCapturing] = useState(false);
+  
+  // Hardware connection state
+  const [isConnected, setIsConnected] = useState(false);
+  const [isTabletConnected, setIsTabletConnected] = useState(false);
+  const [isDetecting, setIsDetecting] = useState(true);
+  const [connectionError, setConnectionError] = useState(null);
+  const [pointCount, setPointCount] = useState(0);
 
-  // Topaz signature pad hook
-  const topaz = useTopazSignature({
-    autoConnect: enableHardware,
-    displayMessage: label || 'Please sign here'
-  });
+  // Check SigWeb connection on mount
+  useEffect(() => {
+    if (!enableHardware) {
+      setIsDetecting(false);
+      return;
+    }
 
-  // Draw SVG path string onto a canvas
-  const drawSVGPathOnCanvas = useCallback((canvas, svgPathString) => {
-    if (!canvas || !svgPathString) return;
-    
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    
-    // Parse SVG path commands
-    const pathCommands = svgPathString.split(/(?=[ML])/);
-    
-    ctx.beginPath();
-    let lastCommand = null;
-    
-    pathCommands.forEach(cmd => {
-      const trimmed = cmd.trim();
-      if (!trimmed) return;
-      
-      const type = trimmed[0];
-      const coords = trimmed.slice(1).trim().split(/\s+/).map(Number);
-      
-      if (type === 'M' && coords.length >= 2) {
-        // If we had a previous path segment, stroke it
-        if (lastCommand === 'L') {
-          ctx.stroke();
-          ctx.beginPath();
-        }
-        ctx.moveTo(coords[0], coords[1]);
-        lastCommand = 'M';
-      } else if (type === 'L' && coords.length >= 2) {
-        ctx.lineTo(coords[0], coords[1]);
-        lastCommand = 'L';
+    const checkConnection = async () => {
+      setIsDetecting(true);
+      try {
+        const result = await sigWeb.checkSigWebAvailability();
+        setIsConnected(result.available);
+        setIsTabletConnected(result.tabletConnected);
+        setConnectionError(result.error);
+      } catch (err) {
+        setIsConnected(false);
+        setIsTabletConnected(false);
+        setConnectionError(err.message);
       }
-    });
-    
-    ctx.stroke();
-  }, []);
+      setIsDetecting(false);
+    };
+
+    checkConnection();
+
+    // Periodically check tablet state
+    const interval = setInterval(async () => {
+      if (sigWeb.isConnected()) {
+        try {
+          const state = await sigWeb.getTabletState();
+          setIsTabletConnected(state === 1);
+        } catch {
+          // Ignore polling errors
+        }
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [enableHardware]);
 
   // Convert paths to SVG path string
   const pathsToSvgString = useCallback((pathsArray) => {
@@ -97,10 +105,9 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
     }).filter(d => d).join(' ');
   }, []);
 
-  // Redraw canvas
-  const redrawCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  // Draw SVG path on canvas
+  const drawSVGPathOnCanvas = useCallback((canvas, svgPathString) => {
+    if (!canvas || !svgPathString) return;
     
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -110,18 +117,33 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     
-    paths.forEach(path => {
-      if (path.length === 0) return;
+    const pathCommands = svgPathString.split(/(?=[ML])/);
+    
+    ctx.beginPath();
+    let lastCommand = null;
+    
+    pathCommands.forEach(cmd => {
+      const trimmed = cmd.trim();
+      if (!trimmed) return;
       
-      ctx.beginPath();
-      ctx.moveTo(path[0].x, path[0].y);
+      const type = trimmed[0];
+      const coords = trimmed.slice(1).trim().split(/\s+/).map(Number);
       
-      for (let i = 1; i < path.length; i++) {
-        ctx.lineTo(path[i].x, path[i].y);
+      if (type === 'M' && coords.length >= 2) {
+        if (lastCommand === 'L') {
+          ctx.stroke();
+          ctx.beginPath();
+        }
+        ctx.moveTo(coords[0], coords[1]);
+        lastCommand = 'M';
+      } else if (type === 'L' && coords.length >= 2) {
+        ctx.lineTo(coords[0], coords[1]);
+        lastCommand = 'L';
       }
-      ctx.stroke();
     });
-  }, [paths]);
+    
+    ctx.stroke();
+  }, []);
 
   const getCoordinates = (e) => {
     const canvas = canvasRef.current;
@@ -160,7 +182,6 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
     const coords = getCoordinates(e);
     setCurrentPath(prev => [...prev, coords]);
     
-    // Draw live stroke
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     
@@ -188,12 +209,12 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
       setHasSignature(true);
       
       // Notify parent of change
+      const svgPath = pathsToSvgString(newPaths);
       if (onChange) {
-        const svgPath = pathsToSvgString(newPaths);
         onChange(svgPath);
       }
       
-      // Redraw with new paths
+      // Redraw
       setTimeout(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -220,12 +241,19 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
     setCurrentPath([]);
   };
 
+  // Clear signature
   const clear = useCallback(async () => {
+    // Stop any preview polling
+    if (previewStopRef.current) {
+      previewStopRef.current();
+      previewStopRef.current = null;
+    }
+    
     setPaths([]);
     setCurrentPath([]);
     setHasSignature(false);
     setHardwareSignatureSVG('');
-    setIsHardwareCapturing(false);
+    setPointCount(0);
     
     // Clear canvas
     const canvas = canvasRef.current;
@@ -241,30 +269,35 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
       ctx.clearRect(0, 0, hwCanvas.width, hwCanvas.height);
     }
     
-    // Clear hardware pad if connected
-    if (topaz.isConnected) {
+    // Clear hardware pad
+    if (sigWeb.isConnected()) {
       try {
-        await topaz.clearSignature();
+        await sigWeb.clearSignature();
       } catch (e) {
         console.log('[SignaturePad] Could not clear hardware pad:', e.message);
       }
     }
     
-    // Notify parent that signature is cleared
+    // Release capture if we're the active one
+    if (activeCapturingId === instanceId.current) {
+      activeCapturingId = null;
+      setIsHardwareCapturing(false);
+    }
+    
+    // Notify parent
     if (onChange) {
       onChange('');
     }
-  }, [topaz, onChange]);
+  }, [onChange]);
 
   const undo = () => {
-    if (captureMode === CAPTURE_MODE.HARDWARE) return; // No undo for hardware
+    if (captureMode === CAPTURE_MODE.HARDWARE) return;
     
     if (paths.length > 0) {
       const newPaths = paths.slice(0, -1);
       setPaths(newPaths);
       setHasSignature(newPaths.length > 0);
       
-      // Redraw canvas
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
@@ -286,13 +319,147 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
         });
       }
       
-      // Notify parent
+      const svgPath = pathsToSvgString(newPaths);
       if (onChange) {
-        const svgPath = pathsToSvgString(newPaths);
         onChange(svgPath);
       }
     }
   };
+
+  // Start hardware capture with real-time preview
+  const startHardwareCapture = useCallback(async () => {
+    if (!sigWeb.isConnected() || !isTabletConnected) {
+      console.log('[SignaturePad] Cannot start capture - not connected');
+      return;
+    }
+
+    // Check if another instance is capturing
+    if (activeCapturingId !== null && activeCapturingId !== instanceId.current) {
+      console.log('[SignaturePad] Another pad is currently capturing');
+      return;
+    }
+
+    // Take control
+    activeCapturingId = instanceId.current;
+    
+    // Clear the pad first
+    try {
+      await sigWeb.clearSignature();
+    } catch (e) {
+      console.log('[SignaturePad] Error clearing pad:', e.message);
+    }
+    
+    setIsHardwareCapturing(true);
+    setHardwareSignatureSVG('');
+    setPointCount(0);
+    
+    // Clear the preview canvas
+    const canvas = hardwareCanvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    // Start real-time preview polling
+    if (previewStopRef.current) {
+      previewStopRef.current();
+    }
+    
+    // Poll for point count and preview
+    let running = true;
+    const poll = async () => {
+      if (!running || activeCapturingId !== instanceId.current) return;
+      
+      try {
+        // Get point count
+        const count = await sigWeb.getSignaturePointCount();
+        setPointCount(count);
+        
+        // Draw preview if we have points
+        if (count > 0 && canvas) {
+          await sigWeb.drawSignatureToCanvas(canvas);
+        }
+      } catch (e) {
+        // Ignore polling errors
+      }
+      
+      if (running && activeCapturingId === instanceId.current) {
+        setTimeout(poll, 100);
+      }
+    };
+    
+    poll();
+    
+    previewStopRef.current = () => {
+      running = false;
+    };
+    
+  }, [isTabletConnected]);
+
+  // Accept hardware signature
+  const acceptHardwareSignature = useCallback(async () => {
+    if (!isHardwareCapturing || activeCapturingId !== instanceId.current) {
+      console.log('[SignaturePad] Not currently capturing');
+      return;
+    }
+
+    // Stop preview polling
+    if (previewStopRef.current) {
+      previewStopRef.current();
+      previewStopRef.current = null;
+    }
+
+    try {
+      // Get the signature as SVG path
+      const svgPath = await sigWeb.getSignatureAsSVGPath(CANVAS_WIDTH, CANVAS_HEIGHT);
+      
+      if (svgPath && svgPath.length > 0) {
+        console.log('[SignaturePad] Accepting signature:', svgPath.substring(0, 50) + '...');
+        
+        setHardwareSignatureSVG(svgPath);
+        setHasSignature(true);
+        
+        // Draw final signature on preview canvas
+        const canvas = hardwareCanvasRef.current;
+        if (canvas) {
+          drawSVGPathOnCanvas(canvas, svgPath);
+        }
+        
+        // CRITICAL: Notify parent with the SVG path
+        if (onChange) {
+          onChange(svgPath);
+        }
+      } else {
+        console.log('[SignaturePad] No signature data received');
+      }
+    } catch (err) {
+      console.error('[SignaturePad] Error accepting signature:', err);
+    }
+
+    // Release capture
+    activeCapturingId = null;
+    setIsHardwareCapturing(false);
+    
+  }, [isHardwareCapturing, onChange, drawSVGPathOnCanvas]);
+
+  // Clear pad while capturing (re-start)
+  const clearPadAndRestart = useCallback(async () => {
+    if (!isHardwareCapturing) return;
+    
+    try {
+      await sigWeb.clearSignature();
+      setPointCount(0);
+      
+      // Clear the preview canvas
+      const canvas = hardwareCanvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    } catch (e) {
+      console.log('[SignaturePad] Error clearing pad:', e.message);
+    }
+  }, [isHardwareCapturing]);
 
   // Switch capture mode
   const switchMode = useCallback(async (mode) => {
@@ -301,106 +468,49 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
     setCaptureMode(mode);
     
     // Auto-start hardware capture when switching to hardware mode
-    if (mode === CAPTURE_MODE.HARDWARE && topaz.isConnected && topaz.isTabletConnected) {
-      setIsHardwareCapturing(true);
-      await topaz.clearSignature(); // Clear the physical pad
-      await topaz.startCapture();
-    } else {
-      setIsHardwareCapturing(false);
+    if (mode === CAPTURE_MODE.HARDWARE && sigWeb.isConnected() && isTabletConnected) {
+      // Small delay to ensure clear is complete
+      setTimeout(() => {
+        startHardwareCapture();
+      }, 100);
     }
-  }, [clear, topaz]);
+  }, [clear, isTabletConnected, startHardwareCapture]);
 
-  // Start hardware capture (also used for retry/restart)
-  const startHardwareCapture = useCallback(async () => {
-    if (!topaz.isConnected || !topaz.isTabletConnected) {
-      return;
-    }
-
-    await topaz.clearSignature(); // Clear any previous signature on pad
-    setIsHardwareCapturing(true);
-    await topaz.startCapture();
-  }, [topaz]);
-
-  // Accept hardware signature
-  const acceptHardwareSignature = useCallback(async () => {
-    if (!isHardwareCapturing) return;
-
-    const result = await topaz.stopCapture(CANVAS_WIDTH, CANVAS_HEIGHT);
-    setIsHardwareCapturing(false);
-
-    if (result.hasSignature && result.svgPath) {
-      setHardwareSignatureSVG(result.svgPath);
-      setHasSignature(true);
-      
-      // Draw the SVG path on the hardware canvas for preview
-      const canvas = hardwareCanvasRef.current;
-      if (canvas) {
-        drawSVGPathOnCanvas(canvas, result.svgPath);
-      }
-      
-      // Notify parent with SVG path data - THIS IS CRITICAL for form validation
-      if (onChange) {
-        console.log('[SignaturePad] Sending signature to parent:', result.svgPath.substring(0, 50) + '...');
-        onChange(result.svgPath);
-      }
-    } else {
-      console.log('[SignaturePad] No signature to accept');
-    }
-  }, [isHardwareCapturing, topaz, onChange, drawSVGPathOnCanvas]);
-
-  // Cancel hardware capture
-  const cancelHardwareCapture = useCallback(async () => {
-    await topaz.stopCapture();
-    await topaz.clearSignature();
-    setIsHardwareCapturing(false);
-  }, [topaz]);
-
-  // Redraw hardware signature on canvas when SVG changes
-  useEffect(() => {
-    if (hardwareSignatureSVG && hardwareCanvasRef.current) {
-      drawSVGPathOnCanvas(hardwareCanvasRef.current, hardwareSignatureSVG);
-    }
-  }, [hardwareSignatureSVG, drawSVGPathOnCanvas]);
-
-  // Auto-start capture when hardware becomes available while in hardware mode
-  useEffect(() => {
-    if (
-      captureMode === CAPTURE_MODE.HARDWARE && 
-      topaz.isConnected && 
-      topaz.isTabletConnected && 
-      !isHardwareCapturing && 
-      !hardwareSignatureSVG
-    ) {
-      // Start capture automatically
-      const autoStart = async () => {
-        console.log('[SignaturePad] Auto-starting hardware capture');
-        await topaz.clearSignature();
-        setIsHardwareCapturing(true);
-        await topaz.startCapture();
-      };
-      autoStart();
-    }
-  }, [captureMode, topaz.isConnected, topaz.isTabletConnected, isHardwareCapturing, hardwareSignatureSVG, topaz]);
-
-  // Retry hardware connection
+  // Retry connection
   const retryConnection = useCallback(async () => {
-    await topaz.connect();
-  }, [topaz]);
+    setIsDetecting(true);
+    try {
+      const result = await sigWeb.checkSigWebAvailability();
+      setIsConnected(result.available);
+      setIsTabletConnected(result.tabletConnected);
+      setConnectionError(result.error);
+    } catch (err) {
+      setConnectionError(err.message);
+    }
+    setIsDetecting(false);
+  }, []);
 
-  // Show hardware option if: enabled AND (connected OR still detecting)
-  // Don't show if we've finished detecting and determined CANVAS fallback
-  const showHardwareOption = enableHardware && (
-    topaz.isDetecting || 
-    topaz.connectionType === CONNECTION_TYPE.SIGWEB || 
-    topaz.connectionType === CONNECTION_TYPE.SDK
-  );
-  const isHardwareAvailable = topaz.isConnected && topaz.isTabletConnected;
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (previewStopRef.current) {
+        previewStopRef.current();
+      }
+      if (activeCapturingId === instanceId.current) {
+        activeCapturingId = null;
+      }
+    };
+  }, []);
+
+  // Show hardware option if enabled and connected
+  const showHardwareOption = enableHardware && (isDetecting || isConnected);
+  const isHardwareAvailable = isConnected && isTabletConnected;
 
   return (
     <div className="form-group">
       <label className="form-label">{label}</label>
       
-      {/* Mode Selector - show if hardware is available or still detecting */}
+      {/* Mode Selector */}
       {showHardwareOption && (
         <div className="signature-mode-selector">
           <button
@@ -415,11 +525,11 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
             type="button"
             className={`mode-btn ${captureMode === CAPTURE_MODE.HARDWARE ? 'active' : ''}`}
             onClick={() => switchMode(CAPTURE_MODE.HARDWARE)}
-            disabled={topaz.isDetecting || !topaz.isConnected}
+            disabled={isDetecting || !isConnected}
           >
             <FontAwesomeIcon icon={faTabletAlt} />
-            <span>{topaz.isDetecting ? 'Detecting...' : 'Signature Pad'}</span>
-            {topaz.isDetecting && <FontAwesomeIcon icon={faSpinner} spin style={{ marginLeft: '0.5rem' }} />}
+            <span>{isDetecting ? 'Detecting...' : 'Signature Pad'}</span>
+            {isDetecting && <FontAwesomeIcon icon={faSpinner} spin style={{ marginLeft: '0.5rem' }} />}
           </button>
         </div>
       )}
@@ -427,16 +537,16 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
       {/* Status indicator for hardware mode */}
       {showHardwareOption && captureMode === CAPTURE_MODE.HARDWARE && (
         <div className="signature-status">
-          {topaz.isDetecting ? (
+          {isDetecting ? (
             <span className="status-detecting">
               <FontAwesomeIcon icon={faSpinner} spin />
               Detecting signature pad...
             </span>
-          ) : topaz.isConnected ? (
-            topaz.isTabletConnected ? (
+          ) : isConnected ? (
+            isTabletConnected ? (
               <span className="status-connected">
                 <FontAwesomeIcon icon={faPlug} />
-                Pad Connected {topaz.tabletModel && `(${topaz.tabletModel})`}
+                Pad Connected
               </span>
             ) : (
               <span className="status-warning">
@@ -455,7 +565,7 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
           ) : (
             <span className="status-error">
               <FontAwesomeIcon icon={faExclamationTriangle} />
-              {topaz.connectionError || 'SigWeb not detected - ensure it\'s running'}
+              {connectionError || 'SigWeb not detected'}
               <button 
                 type="button" 
                 className="retry-btn"
@@ -475,8 +585,8 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
           <>
             <canvas
               ref={canvasRef}
-              width={400}
-              height={120}
+              width={CANVAS_WIDTH}
+              height={CANVAS_HEIGHT}
               className="signature-canvas"
               onMouseDown={startDrawing}
               onMouseMove={draw}
@@ -495,34 +605,40 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
         {/* Hardware Mode */}
         {captureMode === CAPTURE_MODE.HARDWARE && (
           <div className="hardware-signature-area">
+            {/* Always show the canvas for real-time preview */}
+            <canvas
+              ref={hardwareCanvasRef}
+              width={CANVAS_WIDTH}
+              height={CANVAS_HEIGHT}
+              className="signature-canvas hardware-preview-canvas"
+              style={{ background: '#fff' }}
+            />
+            
             {hardwareSignatureSVG ? (
-              // Show captured signature rendered on canvas
-              <div className="hardware-signature-preview">
-                <canvas
-                  ref={hardwareCanvasRef}
-                  width={CANVAS_WIDTH}
-                  height={CANVAS_HEIGHT}
-                  className="signature-canvas hardware-preview-canvas"
-                />
-                <div className="capture-actions" style={{ marginTop: '0.5rem' }}>
-                  <button
-                    type="button"
-                    className="btn btn-small btn-secondary"
-                    onClick={startHardwareCapture}
-                  >
-                    <FontAwesomeIcon icon={faSync} />
-                    Re-sign
-                  </button>
-                </div>
+              // Signature accepted - show re-sign option
+              <div className="capture-actions" style={{ marginTop: '0.5rem' }}>
+                <span style={{ color: '#28a745', marginRight: '1rem' }}>
+                  <FontAwesomeIcon icon={faCheck} /> Signature captured
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-small btn-secondary"
+                  onClick={startHardwareCapture}
+                >
+                  <FontAwesomeIcon icon={faSync} />
+                  Re-sign
+                </button>
               </div>
             ) : isHardwareCapturing ? (
-              // Capturing in progress - auto-started when tab selected
-              <div className="hardware-capture-active">
-                <div className="capture-status">
+              // Capturing in progress
+              <div style={{ marginTop: '0.5rem' }}>
+                <div className="capture-status" style={{ marginBottom: '0.5rem' }}>
                   <FontAwesomeIcon icon={faTabletAlt} className="pulse-icon" />
-                  <span>Sign on the pad now...</span>
-                  {topaz.pointCount > 0 && (
-                    <span className="point-count">({topaz.pointCount} points)</span>
+                  <span style={{ marginLeft: '0.5rem' }}>Sign on the pad now...</span>
+                  {pointCount > 0 && (
+                    <span className="point-count" style={{ marginLeft: '0.5rem', color: '#28a745' }}>
+                      ({pointCount} points)
+                    </span>
                   )}
                 </div>
                 <div className="capture-actions">
@@ -530,7 +646,7 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
                     type="button"
                     className="btn btn-small btn-primary"
                     onClick={acceptHardwareSignature}
-                    disabled={!topaz.hasPoints}
+                    disabled={pointCount === 0}
                   >
                     <FontAwesomeIcon icon={faCheck} />
                     Accept Signature
@@ -538,10 +654,9 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
                   <button
                     type="button"
                     className="btn btn-small btn-secondary"
-                    onClick={async () => {
-                      await topaz.clearSignature();
-                    }}
-                    disabled={!topaz.hasPoints}
+                    onClick={clearPadAndRestart}
+                    disabled={pointCount === 0}
+                    style={{ marginLeft: '0.5rem' }}
                   >
                     <FontAwesomeIcon icon={faEraser} />
                     Clear Pad
@@ -549,34 +664,27 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
                 </div>
               </div>
             ) : isHardwareAvailable ? (
-              // Hardware available but not capturing - auto-start
-              <div className="hardware-capture-ready">
-                <div className="capture-status">
-                  <FontAwesomeIcon icon={faSpinner} spin />
-                  <span>Starting capture...</span>
-                </div>
+              // Ready but not started - this shouldn't happen with auto-start
+              <div style={{ marginTop: '0.5rem', textAlign: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={startHardwareCapture}
+                >
+                  <FontAwesomeIcon icon={faTabletAlt} />
+                  Start Capture
+                </button>
               </div>
             ) : (
               // Hardware not available
-              <div className="hardware-capture-ready">
-                <div className="hardware-unavailable">
-                  <FontAwesomeIcon icon={faExclamationTriangle} />
-                  <span>
-                    {topaz.isConnected 
-                      ? 'Connect signature pad to continue'
-                      : 'Start SigWeb service to use signature pad'
-                    }
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn-small btn-secondary"
-                    onClick={retryConnection}
-                    style={{ marginTop: '0.5rem' }}
-                  >
-                    <FontAwesomeIcon icon={faSync} />
-                    Retry
-                  </button>
-                </div>
+              <div className="hardware-unavailable" style={{ marginTop: '0.5rem', textAlign: 'center' }}>
+                <FontAwesomeIcon icon={faExclamationTriangle} />
+                <span style={{ marginLeft: '0.5rem' }}>
+                  {isConnected 
+                    ? 'Connect signature pad to continue'
+                    : 'Start SigWeb service to use signature pad'
+                  }
+                </span>
               </div>
             )}
           </div>
@@ -600,20 +708,12 @@ const SignaturePad = ({ label, onChange, enableHardware = true }) => {
             className="btn btn-small btn-secondary btn-icon"
             onClick={clear}
             title="Clear"
-            disabled={!hasSignature && !isHardwareCapturing}
+            disabled={!hasSignature && !isHardwareCapturing && pointCount === 0}
           >
             <FontAwesomeIcon icon={faEraser} />
           </button>
         </div>
       </div>
-
-      {/* Error display */}
-      {topaz.error && (
-        <div className="signature-error">
-          <FontAwesomeIcon icon={faExclamationTriangle} />
-          {topaz.error}
-        </div>
-      )}
     </div>
   );
 };

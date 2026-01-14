@@ -464,6 +464,93 @@ export async function getSignaturePointCount() {
 }
 
 /**
+ * Set the image size for signature capture
+ */
+export async function setImageSize(width, height) {
+  await sigWebPost(`ImageXSize/${width}`);
+  await sigWebPost(`ImageYSize/${height}`);
+}
+
+/**
+ * Get the current signature as an image blob (for real-time preview)
+ * @param {HTMLCanvasElement} canvas - Canvas to draw on
+ * @returns {Promise<boolean>} - True if image was drawn
+ */
+export async function drawSignatureToCanvas(canvas) {
+  if (!sigWebConnection.isConnected || !canvas) return false;
+  
+  const baseUrl = getSigWebBaseUrl();
+  const url = `${baseUrl}/SigImage/0`; // 0 = current image without finalizing
+  
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", url, true);
+    xhr.responseType = "blob";
+    xhr.timeout = 1000;
+    
+    xhr.onload = function() {
+      if (xhr.status === 200 && xhr.response) {
+        const img = new Image();
+        const blobUrl = URL.createObjectURL(xhr.response);
+        
+        img.onload = function() {
+          const ctx = canvas.getContext('2d');
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(blobUrl);
+          resolve(true);
+        };
+        
+        img.onerror = function() {
+          URL.revokeObjectURL(blobUrl);
+          resolve(false);
+        };
+        
+        img.src = blobUrl;
+      } else {
+        resolve(false);
+      }
+    };
+    
+    xhr.onerror = function() {
+      resolve(false);
+    };
+    
+    xhr.ontimeout = function() {
+      resolve(false);
+    };
+    
+    xhr.send(null);
+  });
+}
+
+/**
+ * Start real-time signature preview polling
+ * @param {HTMLCanvasElement} canvas - Canvas to draw on
+ * @param {number} interval - Polling interval in ms (default 100)
+ * @returns {function} - Stop function to call when done
+ */
+export function startSignaturePreview(canvas, interval = 100) {
+  let running = true;
+  
+  const poll = async () => {
+    if (!running) return;
+    
+    await drawSignatureToCanvas(canvas);
+    
+    if (running) {
+      setTimeout(poll, interval);
+    }
+  };
+  
+  poll();
+  
+  return () => {
+    running = false;
+  };
+}
+
+/**
  * Check if there is a signature on the tablet
  * @returns {Promise<boolean>}
  */
@@ -807,6 +894,9 @@ export default {
   clearLCD,
   setSigWindow,
   getSignaturePointCount,
+  setImageSize,
+  drawSignatureToCanvas,
+  startSignaturePreview,
   hasSignature,
   getSignaturePoints,
   getSignatureAsSVGPath,
