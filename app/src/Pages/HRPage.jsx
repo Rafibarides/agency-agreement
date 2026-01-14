@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faUserPlus, 
@@ -14,9 +14,6 @@ import BarcodeModal from '../Components/BarcodeModal';
 import { holdForSignature, getProvisionedDevices, TITLE_OPTIONS } from '../utils/api';
 import colors from '../utils/colors';
 
-// Notification sound for new provisioned devices
-const notificationSound = new Audio(`${import.meta.env.BASE_URL}Notification.mp3`);
-
 const HRPage = ({ userEmail, onLogout }) => {
   const [formData, setFormData] = useState({
     name: '',
@@ -30,55 +27,18 @@ const HRPage = ({ userEmail, onLogout }) => {
   // Provisioned devices state
   const [provisionedDevices, setProvisionedDevices] = useState([]);
   const [loadingProvisioned, setLoadingProvisioned] = useState(false);
-  
-  // Track known device row numbers for this session (to detect new ones)
-  const knownDeviceIds = useRef(new Set());
-  const isFirstLoad = useRef(true);
 
   // Fetch provisioned devices on mount
   useEffect(() => {
     fetchProvisionedDevices();
   }, []);
 
-  const playNotificationSound = () => {
-    try {
-      notificationSound.currentTime = 0;
-      notificationSound.play().catch(err => {
-        console.log('Could not play notification sound:', err);
-      });
-    } catch (err) {
-      console.log('Notification sound error:', err);
-    }
-  };
-
   const fetchProvisionedDevices = async () => {
     setLoadingProvisioned(true);
     try {
       const result = await getProvisionedDevices();
       if (result.success) {
-        const devices = result.devices || [];
-        
-        // Check for new devices (only after first load)
-        if (!isFirstLoad.current) {
-          const newDevices = devices.filter(
-            device => device.rowNumber && !knownDeviceIds.current.has(device.rowNumber)
-          );
-          
-          // Play notification if there are new devices
-          if (newDevices.length > 0) {
-            playNotificationSound();
-          }
-        }
-        
-        // Update known device IDs
-        devices.forEach(device => {
-          if (device.rowNumber) {
-            knownDeviceIds.current.add(device.rowNumber);
-          }
-        });
-        
-        isFirstLoad.current = false;
-        setProvisionedDevices(devices);
+        setProvisionedDevices(result.devices || []);
       }
     } catch (err) {
       console.error('Failed to fetch provisioned devices:', err);
