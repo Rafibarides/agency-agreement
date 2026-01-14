@@ -110,25 +110,20 @@ async function testEndpoint(protocol, port) {
 
 /**
  * Check if SigWeb service is available
- * Tries HTTPS first (required for HTTPS pages), then HTTP as fallback
+ * Tries both HTTPS and HTTP endpoints - modern browsers allow HTTP to localhost even from HTTPS pages
  * @returns {Promise<{available: boolean, protocol: string, port: number, tabletConnected: boolean, error: string|null}>}
  */
 export async function checkSigWebAvailability() {
   const isPageHTTPS = typeof window !== 'undefined' && window.location.protocol === 'https:';
   const errors = [];
   
-  // Determine endpoint order based on page protocol
-  // For HTTPS pages, we MUST use HTTPS to SigWeb (mixed content blocking)
-  // For HTTP pages, we can try both but HTTP is more reliable
-  const endpoints = isPageHTTPS
-    ? [
-        { protocol: 'https', port: SIGWEB_CONFIG.httpsPort }
-        // Note: HTTP won't work from HTTPS page due to mixed content
-      ]
-    : [
-        { protocol: 'http', port: SIGWEB_CONFIG.httpPort },
-        { protocol: 'https', port: SIGWEB_CONFIG.httpsPort }
-      ];
+  // Try both endpoints - modern Chrome/Edge allow HTTP to localhost even from HTTPS pages
+  // This is a special "localhost" exception in mixed content rules
+  // Try HTTP first since it's more reliable (HTTPS requires certificate setup)
+  const endpoints = [
+    { protocol: 'http', port: SIGWEB_CONFIG.httpPort },
+    { protocol: 'https', port: SIGWEB_CONFIG.httpsPort }
+  ];
   
   console.log('[SigWeb] Checking availability...', { isPageHTTPS, endpoints });
   
@@ -173,10 +168,17 @@ export async function checkSigWebAvailability() {
     lastError: combinedError
   };
   
-  // Provide helpful error message
-  let helpfulError = combinedError;
-  if (isPageHTTPS) {
-    helpfulError = 'HTTPS certificate not accepted. Visit https://localhost:47289/SigWeb/TabletState in your browser and accept the certificate, then refresh this page.';
+  // Provide helpful error message based on what failed
+  let helpfulError = 'SigWeb not detected. Ensure SigWeb service is running.';
+  
+  // Check if it's likely a mixed content issue (HTTP failed with network error from HTTPS page)
+  const httpFailed = errors.find(e => e.includes('http:47290'));
+  const httpsMisconfigured = errors.find(e => e.includes('https:47289') && e.includes('SSL'));
+  
+  if (isPageHTTPS && httpFailed && httpFailed.includes('Failed to fetch')) {
+    helpfulError = 'Mixed content blocked. Your browser may not allow HTTP connections to localhost from this HTTPS site. Try accessing the app via HTTP instead, or configure SigWeb HTTPS.';
+  } else if (httpsMisconfigured) {
+    helpfulError = 'SigWeb HTTPS not configured. The HTTP connection may be blocked by your browser. Check SigWeb settings.';
   }
   
   return { 
