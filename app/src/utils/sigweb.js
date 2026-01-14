@@ -5,16 +5,26 @@
  * SigWeb runs as a local service on port 47289 (HTTPS) or 47290 (HTTP)
  * Requires SigWeb to be installed and running on the client machine
  * 
- * VERSION: 2.0 - HTTP First (2024-01-14)
+ * VERSION: 3.0 - Using tablet.sigwebtablet.com for HTTPS compatibility (2025-01-14)
+ * 
+ * KEY: Uses tablet.sigwebtablet.com domain which:
+ * - Resolves to 127.0.0.1 (localhost)
+ * - Has valid SSL certificate trusted by browsers
+ * - Avoids mixed content issues when page is served over HTTPS
  */
 
 // Log version on load to verify deployment
-console.log('[SigWeb] Module loaded - Version 2.0 (HTTP First)');
+console.log('[SigWeb] Module loaded - Version 3.0 (tablet.sigwebtablet.com)');
 
 const SIGWEB_CONFIG = {
+  // SigWeb tablet domain - resolves to localhost but has valid SSL cert
+  tabletDomain: 'tablet.sigwebtablet.com',
+  
   // Default SigWeb service ports
-  httpsPort: 47289,
-  httpPort: 47290,
+  // When page is HTTPS: use port 47290 with https://tablet.sigwebtablet.com
+  // When page is HTTP: use port 47289 with http://tablet.sigwebtablet.com
+  httpsPort: 47290, // Used when page is HTTPS
+  httpPort: 47289,  // Used when page is HTTP
   
   // Signature capture settings for T-LBK755-BHSB-R
   // This is a 4.4" x 1.3" active area pad with 410 PPI
@@ -49,6 +59,78 @@ export function getLastConnectionError() {
 }
 
 /**
+ * Get the base URI for SigWeb based on page protocol
+ * Uses tablet.sigwebtablet.com domain which resolves to localhost but has valid SSL cert
+ */
+function makeBaseUri() {
+  const pageProtocol = typeof window !== 'undefined' ? window.location.protocol : 'https:';
+  
+  // Use same protocol as page to avoid mixed content issues
+  // tablet.sigwebtablet.com resolves to 127.0.0.1 but has valid SSL cert
+  if (pageProtocol === 'https:') {
+    // HTTPS page: use https with port 47290
+    return `https://${SIGWEB_CONFIG.tabletDomain}:${SIGWEB_CONFIG.httpsPort}/SigWeb/`;
+  } else {
+    // HTTP page: use http with port 47289
+    return `http://${SIGWEB_CONFIG.tabletDomain}:${SIGWEB_CONFIG.httpPort}/SigWeb/`;
+  }
+}
+
+/**
+ * Create an XMLHttpRequest (used by working Topaz code)
+ */
+function createXHR() {
+  try { return new XMLHttpRequest(); } catch (e) { }
+  try { return new ActiveXObject("Msxml2.XMLHTTP.6.0"); } catch (e) { }
+  try { return new ActiveXObject("Msxml2.XMLHTTP.3.0"); } catch (e) { }
+  try { return new ActiveXObject("Msxml2.XMLHTTP"); } catch (e) { }
+  try { return new ActiveXObject("Microsoft.XMLHTTP"); } catch (e) { }
+  return null;
+}
+
+/**
+ * Make a synchronous SigWeb GET request (matches working Topaz implementation)
+ */
+function sigWebGetProperty(prop) {
+  const baseUri = makeBaseUri();
+  const xhr = createXHR();
+  
+  if (xhr) {
+    try {
+      xhr.open("GET", baseUri + prop, false); // Synchronous
+      xhr.send(null);
+      if (xhr.readyState === 4 && xhr.status === 200) {
+        return xhr.responseText;
+      }
+    } catch (error) {
+      console.log(`[SigWeb] XHR error for ${prop}:`, error.message);
+    }
+  }
+  return "";
+}
+
+/**
+ * Make a synchronous SigWeb POST request (matches working Topaz implementation)
+ */
+function sigWebSetPropertySync(prop) {
+  const baseUri = makeBaseUri();
+  const xhr = createXHR();
+  
+  if (xhr) {
+    try {
+      xhr.open("POST", baseUri + prop, false); // Synchronous
+      xhr.send();
+      if (xhr.readyState === 4 && xhr.status === 200) {
+        return xhr.responseText;
+      }
+    } catch (error) {
+      console.log(`[SigWeb] XHR error for ${prop}:`, error.message);
+    }
+  }
+  return "";
+}
+
+/**
  * Create a fetch with timeout that works across browsers
  */
 async function fetchWithTimeout(url, options = {}, timeout = SIGWEB_CONFIG.timeout) {
@@ -69,11 +151,12 @@ async function fetchWithTimeout(url, options = {}, timeout = SIGWEB_CONFIG.timeo
 }
 
 /**
- * Test a single SigWeb endpoint
+ * Test SigWeb endpoint using the tablet.sigwebtablet.com domain
  * @returns {Promise<{success: boolean, state: string, error: string|null}>}
  */
-async function testEndpoint(protocol, port) {
-  const url = `${protocol}://localhost:${port}/SigWeb/TabletState`;
+async function testEndpoint() {
+  const baseUri = makeBaseUri();
+  const url = baseUri + 'TabletState';
   
   console.log(`[SigWeb] Testing: ${url}`);
   
@@ -105,12 +188,7 @@ async function testEndpoint(protocol, port) {
     if (error.name === 'AbortError') {
       errorMsg = 'Connection timeout - SigWeb may not be running';
     } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-      // This is usually CORS or network error
-      if (protocol === 'https') {
-        errorMsg = 'HTTPS failed - SSL/certificate error';
-      } else {
-        errorMsg = 'HTTP failed - blocked or SigWeb not running';
-      }
+      errorMsg = 'Failed to connect - SigWeb may not be running or DNS issue with tablet.sigwebtablet.com';
     }
     
     return { success: false, state: '', error: errorMsg };
@@ -119,83 +197,64 @@ async function testEndpoint(protocol, port) {
 
 /**
  * Check if SigWeb service is available
- * Tries both HTTPS and HTTP endpoints - modern browsers allow HTTP to localhost even from HTTPS pages
+ * Uses tablet.sigwebtablet.com domain which resolves to localhost but has valid SSL cert
  * @returns {Promise<{available: boolean, protocol: string, port: number, tabletConnected: boolean, error: string|null}>}
  */
 export async function checkSigWebAvailability() {
-  const isPageHTTPS = typeof window !== 'undefined' && window.location.protocol === 'https:';
-  const errors = [];
+  const pageProtocol = typeof window !== 'undefined' ? window.location.protocol : 'https:';
+  const baseUri = makeBaseUri();
   
   console.log('[SigWeb] ====== CONNECTION CHECK START ======');
-  console.log('[SigWeb] Page protocol:', window.location.protocol);
-  console.log('[SigWeb] Will try HTTP (47290) first, then HTTPS (47289)');
+  console.log('[SigWeb] Page protocol:', pageProtocol);
+  console.log('[SigWeb] Using base URI:', baseUri);
+  console.log('[SigWeb] (tablet.sigwebtablet.com resolves to 127.0.0.1 with valid SSL cert)');
   
-  // CRITICAL: Try HTTP first - it works without certificate setup
-  // Modern Chrome allows HTTP to localhost even from HTTPS pages
-  const endpoints = [
-    { protocol: 'http', port: 47290 },  // HTTP FIRST!
-    { protocol: 'https', port: 47289 }  // HTTPS second (requires cert)
-  ];
+  const result = await testEndpoint();
   
-  for (let i = 0; i < endpoints.length; i++) {
-    const endpoint = endpoints[i];
-    console.log(`[SigWeb] Attempt ${i + 1}/${endpoints.length}: ${endpoint.protocol}://localhost:${endpoint.port}/SigWeb/TabletState`);
+  if (result.success) {
+    const protocol = pageProtocol === 'https:' ? 'https' : 'http';
+    const port = pageProtocol === 'https:' ? SIGWEB_CONFIG.httpsPort : SIGWEB_CONFIG.httpPort;
     
-    const result = await testEndpoint(endpoint.protocol, endpoint.port);
+    console.log(`[SigWeb] ✓ SUCCESS! Connected via ${protocol}://${SIGWEB_CONFIG.tabletDomain}:${port}`);
+    console.log(`[SigWeb] Tablet state: ${result.state} (1=connected, 0=disconnected)`);
     
-    if (result.success) {
-      console.log(`[SigWeb] ✓ SUCCESS! Connected via ${endpoint.protocol}:${endpoint.port}`);
-      console.log(`[SigWeb] Tablet state: ${result.state} (1=connected, 0=disconnected)`);
-      
-      sigWebConnection = {
-        isConnected: true,
-        protocol: endpoint.protocol,
-        port: endpoint.port,
-        tabletModel: null,
-        lastError: null
-      };
-      
-      return { 
-        available: true, 
-        protocol: endpoint.protocol,
-        port: endpoint.port,
-        tabletConnected: result.state === '1',
-        error: null
-      };
-    } else {
-      console.warn(`[SigWeb] ✗ FAILED ${endpoint.protocol}:${endpoint.port} -`, result.error);
-      errors.push(`${endpoint.protocol}:${endpoint.port} - ${result.error}`);
-    }
+    sigWebConnection = {
+      isConnected: true,
+      protocol: protocol,
+      port: port,
+      tabletModel: null,
+      lastError: null
+    };
+    
+    return { 
+      available: true, 
+      protocol: protocol,
+      port: port,
+      tabletConnected: result.state === '1',
+      error: null
+    };
   }
   
-  // All endpoints failed
-  const combinedError = errors.join('; ');
-  console.error('[SigWeb] ====== ALL ATTEMPTS FAILED ======');
-  console.error('[SigWeb] Errors:', combinedError);
+  // Connection failed
+  console.error('[SigWeb] ====== CONNECTION FAILED ======');
+  console.error('[SigWeb] Error:', result.error);
   
   sigWebConnection = {
     isConnected: false,
     protocol: null,
     port: null,
     tabletModel: null,
-    lastError: combinedError
+    lastError: result.error
   };
   
-  // Provide helpful error message based on what failed
-  let helpfulError = 'SigWeb not detected. Ensure SigWeb service is running.';
+  // Provide helpful error message
+  let helpfulError = 'SigWeb not detected. Ensure SigWeb service is installed and running.';
   
-  // Check specific failure patterns
-  const httpError = errors.find(e => e.includes('http:47290'));
-  const httpsError = errors.find(e => e.includes('https:47289'));
-  
-  if (httpError && httpError.includes('Failed to fetch')) {
-    if (isPageHTTPS) {
-      helpfulError = 'Mixed content blocked by browser. Try: 1) Open http://localhost:47290/SigWeb/TabletState directly to verify SigWeb is running, or 2) Access this app via HTTP instead of HTTPS.';
-    } else {
-      helpfulError = 'Could not connect to SigWeb. Verify the service is running at http://localhost:47290';
-    }
-  } else if (httpsError && httpsError.includes('SSL')) {
-    helpfulError = 'SigWeb HTTPS endpoint not working. HTTP connection also failed - check if SigWeb service is running.';
+  if (result.error && result.error.includes('timeout')) {
+    helpfulError = 'Connection timeout. SigWeb service may not be running. Please ensure SigWeb is installed and the service is started.';
+  } else if (result.error && result.error.includes('Failed to connect')) {
+    helpfulError = 'Could not connect to SigWeb. Please verify: 1) SigWeb is installed, 2) The SigWeb service is running, 3) Your firewall allows connections on port ' + 
+      (pageProtocol === 'https:' ? SIGWEB_CONFIG.httpsPort : SIGWEB_CONFIG.httpPort);
   }
   
   return { 
@@ -209,12 +268,14 @@ export async function checkSigWebAvailability() {
 
 /**
  * Get the base URL for SigWeb API calls
+ * Uses tablet.sigwebtablet.com domain (resolves to localhost with valid SSL cert)
  */
 function getSigWebBaseUrl() {
   if (!sigWebConnection.isConnected) {
     throw new Error('SigWeb not connected. Call checkSigWebAvailability first.');
   }
-  return `${sigWebConnection.protocol}://localhost:${sigWebConnection.port}/SigWeb`;
+  // Use the tablet domain instead of localhost for SSL compatibility
+  return `${sigWebConnection.protocol}://${SIGWEB_CONFIG.tabletDomain}:${sigWebConnection.port}/SigWeb`;
 }
 
 /**
