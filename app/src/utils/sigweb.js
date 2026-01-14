@@ -298,18 +298,14 @@ export function getConnectionInfo() {
 }
 
 /**
- * Make a SigWeb API call
+ * Make a SigWeb API GET call (for reading data)
  */
-async function sigWebCall(endpoint, params = {}) {
+async function sigWebGet(endpoint) {
   const baseUrl = getSigWebBaseUrl();
-  const url = new URL(`${baseUrl}/${endpoint}`);
-  
-  Object.keys(params).forEach(key => {
-    url.searchParams.append(key, params[key]);
-  });
+  const url = `${baseUrl}/${endpoint}`;
   
   try {
-    const response = await fetchWithTimeout(url.toString(), {
+    const response = await fetchWithTimeout(url, {
       method: 'GET',
       mode: 'cors',
       cache: 'no-cache',
@@ -319,12 +315,40 @@ async function sigWebCall(endpoint, params = {}) {
     });
     
     if (!response.ok) {
-      throw new Error(`SigWeb call failed: ${response.status} ${response.statusText}`);
+      throw new Error(`SigWeb GET failed: ${response.status} ${response.statusText}`);
     }
     
     return response.text();
   } catch (error) {
-    console.error(`[SigWeb] API call to ${endpoint} failed:`, error.message);
+    console.error(`[SigWeb] GET ${endpoint} failed:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * Make a SigWeb API POST call (for setting/clearing data)
+ */
+async function sigWebPost(endpoint) {
+  const baseUrl = getSigWebBaseUrl();
+  const url = `${baseUrl}/${endpoint}`;
+  
+  try {
+    const response = await fetchWithTimeout(url, {
+      method: 'POST',
+      mode: 'cors',
+      cache: 'no-cache',
+      headers: {
+        'Accept': 'text/plain'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`SigWeb POST failed: ${response.status} ${response.statusText}`);
+    }
+    
+    return response.text();
+  } catch (error) {
+    console.error(`[SigWeb] POST ${endpoint} failed:`, error.message);
     throw error;
   }
 }
@@ -334,7 +358,7 @@ async function sigWebCall(endpoint, params = {}) {
  */
 export async function getTabletState() {
   try {
-    const state = await sigWebCall('TabletState');
+    const state = await sigWebGet('TabletState');
     return parseInt(state, 10);
   } catch {
     return 0;
@@ -346,7 +370,7 @@ export async function getTabletState() {
  */
 export async function getTabletModelNumber() {
   try {
-    const model = await sigWebCall('TabletModelNumber');
+    const model = await sigWebGet('TabletModelNumber');
     sigWebConnection.tabletModel = model;
     return model;
   } catch {
@@ -359,7 +383,7 @@ export async function getTabletModelNumber() {
  */
 export async function hasLCDDisplay() {
   try {
-    const result = await sigWebCall('GetLCDCaptureMode');
+    const result = await sigWebGet('CaptureMode');
     return result !== '-1' && result !== '0';
   } catch {
     return false;
@@ -368,16 +392,24 @@ export async function hasLCDDisplay() {
 
 /**
  * Reset the tablet and clear any existing signature
+ * Note: SigWeb doesn't have a "Reset" endpoint - use ResetParameters or ClearSignature
  */
 export async function resetTablet() {
-  await sigWebCall('Reset');
+  try {
+    // ResetParameters resets tablet settings to defaults
+    await sigWebPost('ResetParameters');
+  } catch {
+    // If ResetParameters fails, just clear the signature
+    await clearSignature();
+  }
 }
 
 /**
  * Clear the signature from the tablet
  */
 export async function clearSignature() {
-  await sigWebCall('ClearTablet');
+  // Use ClearSignature endpoint (matches working Topaz code)
+  await sigWebGet('ClearSignature');
 }
 
 /**
@@ -385,41 +417,37 @@ export async function clearSignature() {
  * Mode 2 = Capture in autoerase mode (recommended for T-LBK755)
  */
 export async function setLCDCaptureMode(mode = 2) {
-  await sigWebCall('SetLCDCaptureMode', { Mode: mode });
+  await sigWebPost(`CaptureMode/${mode}`);
 }
 
 /**
  * Display text on the LCD screen (for pads with displays)
- * @param {string} text - Text to display
- * @param {number} x - X position
- * @param {number} y - Y position
- * @param {number} font - Font size (1-5)
+ * Note: This is complex - uses canvas rendering in reference implementation
+ * For now, we'll skip LCD text display as it requires special handling
  */
 export async function displayLCDText(text, x = 0, y = 0, font = 2) {
-  await sigWebCall('LCDWriteString', {
-    Dest: 1, // 1 = LCD, 2 = Background
-    Mode: 1, // 1 = Normal
-    X: x,
-    Y: y,
-    Font: font,
-    String: text
-  });
+  // LCD text display requires special bitmap handling
+  // The reference code creates a canvas, renders text, and sends as bitmap
+  // For basic functionality, we can skip this
+  console.log('[SigWeb] LCD text display not implemented - tablet will work without it');
 }
 
 /**
  * Clear the LCD display
  */
 export async function clearLCD() {
-  await sigWebCall('ClearSigWindow', { Dest: 1 });
+  try {
+    await sigWebPost('LcdRefresh/0,0,0,240,64');
+  } catch {
+    // LCD refresh may not be supported on all tablets
+  }
 }
 
 /**
  * Set the signature window dimensions on LCD pads
  */
-export async function setSigWindow(x = 0, y = 0, width = 240, height = 64) {
-  await sigWebCall('SetSigWindow', { 
-    Coords: `${x},${y},${x + width},${y + height}` 
-  });
+export async function setSigWindow(coords, x, y, width, height) {
+  await sigWebPost(`SigWindow/${coords},${x},${y},${width},${height}`);
 }
 
 /**
@@ -428,7 +456,7 @@ export async function setSigWindow(x = 0, y = 0, width = 240, height = 64) {
  */
 export async function getSignaturePointCount() {
   try {
-    const count = await sigWebCall('GetNumPoints');
+    const count = await sigWebGet('TotalPoints');
     return parseInt(count, 10);
   } catch {
     return 0;
@@ -453,21 +481,24 @@ export async function getSignaturePoints() {
   if (pointCount === 0) return [];
   
   try {
-    // Get all points - SigWeb provides GetSigPoint for individual points
+    // Get signature string and parse it
+    const sigString = await sigWebGet('SigString');
+    if (!sigString) return [];
+    
+    // Parse the signature string into points
+    const cleanStr = sigString.replace(/^"|"$/g, ''); // Remove quotes if present
+    const values = cleanStr.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+    
     const points = [];
-    for (let i = 0; i < pointCount; i++) {
-      const pointData = await sigWebCall('GetSigPoint', { Index: i });
-      if (pointData) {
-        // Point format: "x,y,pressure" or "x,y"
-        const parts = pointData.split(',').map(Number);
-        points.push({
-          x: parts[0],
-          y: parts[1],
-          pressure: parts[2] || 1,
-          // Pen up is indicated by 0 pressure or special values
-          penUp: parts[2] === 0 || parts[0] === 0
-        });
-      }
+    for (let i = 0; i < values.length - 1; i += 2) {
+      const x = values[i];
+      const y = values[i + 1];
+      points.push({
+        x: x,
+        y: y,
+        pressure: 1,
+        penUp: x === 0 && y === 0
+      });
     }
     return points;
   } catch {
@@ -487,11 +518,13 @@ export async function getSignatureAsSVGPath(targetWidth = 400, targetHeight = 12
   if (pointCount === 0) return '';
   
   try {
-    // Try GetSigString first (more reliable for point data)
-    const sigData = await sigWebCall('GetSigString');
+    // Get SigString (matches working Topaz code)
+    const sigData = await sigWebGet('SigString');
     
-    if (sigData && sigData !== '') {
-      return convertSigStringToSVGPath(sigData, targetWidth, targetHeight);
+    if (sigData && sigData !== '' && sigData !== '""') {
+      // Remove quotes if present
+      const cleanData = sigData.replace(/^"|"$/g, '');
+      return convertSigStringToSVGPath(cleanData, targetWidth, targetHeight);
     }
     
     // Fallback: get points individually
@@ -658,15 +691,20 @@ function convertPointsToSVGPath(points, targetWidth = 400, targetHeight = 120) {
  * Sets up the tablet for signature capture
  */
 export async function startSignatureCapture(displayMessage = 'Please sign here') {
-  await resetTablet();
+  // Clear any existing signature
+  await clearSignature();
   
   // Check if pad has LCD and set it up
-  const hasLCD = await hasLCDDisplay();
-  if (hasLCD) {
-    await setLCDCaptureMode(2);
-    await clearLCD();
-    await displayLCDText(displayMessage, 10, 5, 2);
-    await setSigWindow(0, 20, SIGWEB_CONFIG.lcdXSize, SIGWEB_CONFIG.lcdYSize - 20);
+  try {
+    const hasLCD = await hasLCDDisplay();
+    if (hasLCD) {
+      await setLCDCaptureMode(2);
+      await clearLCD();
+      // Note: LCD text display requires complex bitmap handling, skipping for now
+    }
+  } catch (e) {
+    // LCD setup is optional, continue without it
+    console.log('[SigWeb] LCD setup skipped:', e.message);
   }
 }
 
