@@ -6,14 +6,16 @@ import {
   faSignOutAlt,
   faSpinner,
   faExclamationTriangle,
-  faShieldAlt
+  faShieldAlt,
+  faBoxOpen
 } from '@fortawesome/free-solid-svg-icons';
 import List from '../Components/List';
 import MultiDeviceReport from '../Components/MultiDeviceReport';
+import CellularDeviceReport from '../Components/CellularDeviceReport';
 import { adminLogin, getAllAgreements, searchAgreements } from '../utils/api';
 import colors from '../utils/colors';
 
-const AdminPage = () => {
+const AdminPage = ({ onOpenRetrieval }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -209,7 +211,12 @@ const AdminPage = () => {
             View and manage all submitted property agreements
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="btn btn-retrieval" onClick={onOpenRetrieval}>
+            <FontAwesomeIcon icon={faBoxOpen} />
+            Retrieval Program
+          </button>
+          <CellularDeviceReport />
           <MultiDeviceReport />
           <button className="btn btn-secondary" onClick={handleLogout}>
             <FontAwesomeIcon icon={faSignOutAlt} />

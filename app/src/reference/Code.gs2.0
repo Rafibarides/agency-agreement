@@ -7,7 +7,19 @@ const CONFIG = {
   ADMIN_USERNAME: 'Admin',
   ADMIN_PASSWORD: 'wellbound!',
   SHEET_NAME: 'Agreements',
+  RETRIEVAL_SHEET_NAME: 'Retrievals',
   APF_PIN: '1234', // PIN for Hold for Signature and APF access
+  // Retrieval Program Stages
+  RETRIEVAL_STAGES: {
+    1: 'Terminated/Inactive',
+    2: 'Text Sent to Staff',
+    3: 'Staff Called',
+    4: 'Final Follow Up',
+    5: 'Scheduled Dropoff',
+    6: 'Awaiting Mailback',
+    7: 'Device Returned',
+    8: 'Remotely Offboarded'
+  },
   COMPANY_INFO: {
     name: 'AMBER COURT AT HOME D/B/A WELLBOUND',
     address: '7424 13th Avenue',
@@ -98,6 +110,39 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(getProvisionedDevices()))
           .setMimeType(ContentService.MimeType.JSON);
       
+      case 'markDueForReturn':
+        return ContentService.createTextOutput(JSON.stringify(markDueForReturn(data.rowNumber, data.dueForReturn)))
+          .setMimeType(ContentService.MimeType.JSON);
+      
+      case 'getDueForReturnDevices':
+        return ContentService.createTextOutput(JSON.stringify(getDueForReturnDevices()))
+          .setMimeType(ContentService.MimeType.JSON);
+      
+      // Retrieval Program endpoints
+      case 'createRetrievalCase':
+        return ContentService.createTextOutput(JSON.stringify(createRetrievalCase(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      
+      case 'getRetrievalCases':
+        return ContentService.createTextOutput(JSON.stringify(getRetrievalCases()))
+          .setMimeType(ContentService.MimeType.JSON);
+      
+      case 'updateRetrievalStage':
+        return ContentService.createTextOutput(JSON.stringify(updateRetrievalStage(data.caseId, data.newStage, data.notes)))
+          .setMimeType(ContentService.MimeType.JSON);
+      
+      case 'updateRetrievalCallStatus':
+        return ContentService.createTextOutput(JSON.stringify(updateRetrievalCallStatus(data.caseId, data.callStatus)))
+          .setMimeType(ContentService.MimeType.JSON);
+      
+      case 'deleteRetrievalCase':
+        return ContentService.createTextOutput(JSON.stringify(deleteRetrievalCase(data.caseId)))
+          .setMimeType(ContentService.MimeType.JSON);
+      
+      case 'addRetrievalNote':
+        return ContentService.createTextOutput(JSON.stringify(addRetrievalNote(data.caseId, data.note)))
+          .setMimeType(ContentService.MimeType.JSON);
+      
       default:
         throw new Error('Invalid action');
     }
@@ -147,7 +192,8 @@ function initializeSpreadsheet() {
       'Supervisor Signature',
       'Send Copy to Employee',
       'Employee Email',
-      'Provisioned'
+      'Provisioned',
+      'DueForReturn'
     ];
     
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
@@ -188,7 +234,8 @@ function submitAgreement(data) {
       data.supervisorSignature || '',
       data.sendCopyToEmployee || false,
       data.employeeEmail || '',
-      false // Provisioned - default false
+      false, // Provisioned - default false
+      false  // DueForReturn - default false
     ];
     
     sheet.appendRow(row);
@@ -383,7 +430,8 @@ function holdForSignature(data) {
       '', // Supervisor Signature - empty
       false, // Send Copy to Employee
       '', // Employee Email
-      false // Provisioned - default false
+      false, // Provisioned - default false
+      false  // DueForReturn - default false
     ];
     
     sheet.appendRow(row);
@@ -780,6 +828,591 @@ function getProvisionedDevices() {
     };
   }
 }
+
+// ============================================
+// DUE FOR RETURN FUNCTIONS
+// ============================================
+
+/**
+ * Mark a device as due for return (for coordinator retrieval)
+ */
+function markDueForReturn(rowNumber, dueForReturn) {
+  try {
+    if (!rowNumber) {
+      return { success: false, error: 'Row number is required' };
+    }
+    
+    const sheet = initializeSpreadsheet();
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    
+    // Find or create DueForReturn column
+    let dueForReturnIndex = headers.indexOf('DueForReturn');
+    
+    if (dueForReturnIndex === -1) {
+      // Add the DueForReturn column if it doesn't exist
+      dueForReturnIndex = headers.length;
+      sheet.getRange(1, dueForReturnIndex + 1).setValue('DueForReturn');
+    }
+    
+    // Validate row exists
+    const rowIndex = parseInt(rowNumber);
+    if (rowIndex < 2 || rowIndex > sheet.getLastRow()) {
+      return { success: false, error: 'Invalid row number' };
+    }
+    
+    // Update the DueForReturn status
+    const newStatus = dueForReturn !== false; // Default to true if not explicitly false
+    sheet.getRange(rowIndex, dueForReturnIndex + 1).setValue(newStatus);
+    
+    return {
+      success: true,
+      message: newStatus ? 'Device marked as due for return' : 'Device unmarked as due for return',
+      rowNumber: rowIndex,
+      dueForReturn: newStatus
+    };
+  } catch(error) {
+    Logger.log('markDueForReturn error: ' + error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Get all devices marked as due for return
+ */
+function getDueForReturnDevices() {
+  try {
+    const sheet = initializeSpreadsheet();
+    const data = sheet.getDataRange().getValues();
+    
+    if (data.length <= 1) {
+      return { success: true, devices: [] };
+    }
+    
+    const headers = data[0];
+    const devices = [];
+    
+    // Find column index
+    const dueForReturnIndex = headers.indexOf('DueForReturn');
+    
+    // If column doesn't exist, return empty
+    if (dueForReturnIndex === -1) {
+      Logger.log('DueForReturn column not found');
+      return { success: true, devices: [] };
+    }
+    
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      
+      // Check if marked as due for return
+      const isDueForReturn = row[dueForReturnIndex] === true || row[dueForReturnIndex] === 'TRUE';
+      
+      if (isDueForReturn) {
+        const device = {};
+        headers.forEach((header, index) => {
+          device[header] = row[index];
+        });
+        device.rowNumber = i + 1;
+        devices.push(device);
+      }
+    }
+    
+    return {
+      success: true,
+      devices: devices.reverse() // Most recent first
+    };
+  } catch(error) {
+    Logger.log('getDueForReturnDevices error: ' + error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// ============================================
+// RETRIEVAL PROGRAM FUNCTIONS
+// ============================================
+
+/**
+ * Initialize the Retrievals sheet
+ * Ensures headers exist even if sheet was created manually
+ */
+function initializeRetrievalSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(CONFIG.RETRIEVAL_SHEET_NAME);
+  
+  const expectedHeaders = [
+    'CaseID',           // Unique identifier
+    'Created',          // Timestamp when case was created
+    'Stage',            // Current stage (1-8)
+    'StaffName',        // Employee name
+    'WorkerID',         // Employee worker ID
+    'Title',            // Job title (RN, LPN, etc.)
+    'DeviceType',       // Type of device (Lenovo Tab, etc.)
+    'DeviceName',       // Esper device name
+    'SerialNumber',     // Device serial number
+    'EsperID',          // Esper identifier code
+    'LastUpdated',      // When stage was last changed
+    'CallStatus',       // For Stage 3: 'successful' or 'did_not_answer'
+    'Notes',            // JSON array of notes with timestamps
+    'AssignedTo',       // Coordinator handling this case
+    'ResolvedDate',     // Date when moved to stage 7 or 8
+    'IsDeleted'         // Soft delete flag
+  ];
+  
+  if (!sheet) {
+    // Create new sheet with headers
+    sheet = ss.insertSheet(CONFIG.RETRIEVAL_SHEET_NAME);
+    sheet.getRange(1, 1, 1, expectedHeaders.length).setValues([expectedHeaders]);
+    sheet.getRange(1, 1, 1, expectedHeaders.length).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  } else {
+    // Sheet exists - check if headers are correct
+    const firstRow = sheet.getRange(1, 1, 1, expectedHeaders.length).getValues()[0];
+    const firstCellValue = firstRow[0] ? firstRow[0].toString() : '';
+    
+    // If first cell doesn't match expected header, headers are missing
+    // Check if it looks like a CaseID (starts with "RET-") instead of "CaseID"
+    if (firstCellValue !== 'CaseID' && (firstCellValue.startsWith('RET-') || firstCellValue === '')) {
+      // Headers are missing - insert a row at the top and add headers
+      sheet.insertRowBefore(1);
+      sheet.getRange(1, 1, 1, expectedHeaders.length).setValues([expectedHeaders]);
+      sheet.getRange(1, 1, 1, expectedHeaders.length).setFontWeight('bold');
+      sheet.setFrozenRows(1);
+      Logger.log('Headers were missing - added header row to Retrievals sheet');
+    }
+  }
+  
+  return sheet;
+}
+
+/**
+ * Generate a unique case ID
+ */
+function generateCaseID() {
+  const timestamp = new Date().getTime();
+  const random = Math.floor(Math.random() * 1000);
+  return `RET-${timestamp}-${random}`;
+}
+
+/**
+ * Create a new retrieval case (copies device info from Esper into sheet)
+ */
+function createRetrievalCase(data) {
+  try {
+    const sheet = initializeRetrievalSheet();
+    
+    const caseId = generateCaseID();
+    const now = new Date();
+    
+    // Initial notes array with creation entry
+    const initialNotes = JSON.stringify([{
+      timestamp: now.toISOString(),
+      text: 'Case created - Device added to retrieval program',
+      type: 'system'
+    }]);
+    
+    const row = [
+      caseId,                           // CaseID
+      now,                              // Created
+      1,                                // Stage (starts at 1)
+      data.staffName || '',             // StaffName
+      data.workerId || '',              // WorkerID
+      data.title || '',                 // Title
+      data.deviceType || '',            // DeviceType
+      data.deviceName || '',            // DeviceName
+      data.serialNumber || '',          // SerialNumber
+      data.esperID || '',               // EsperID
+      now,                              // LastUpdated
+      '',                               // CallStatus (empty until Stage 3)
+      initialNotes,                     // Notes
+      data.assignedTo || '',            // AssignedTo
+      '',                               // ResolvedDate
+      false                             // IsDeleted
+    ];
+    
+    sheet.appendRow(row);
+    
+    return {
+      success: true,
+      message: 'Retrieval case created successfully',
+      caseId: caseId,
+      rowNumber: sheet.getLastRow()
+    };
+  } catch(error) {
+    Logger.log('createRetrievalCase error: ' + error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Get all retrieval cases (excluding soft-deleted)
+ */
+function getRetrievalCases() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName(CONFIG.RETRIEVAL_SHEET_NAME);
+    
+    // Debug: Check if sheet exists
+    if (!sheet) {
+      return { 
+        success: true, 
+        cases: [], 
+        debug: { 
+          message: 'Sheet not found, will be created',
+          sheetName: CONFIG.RETRIEVAL_SHEET_NAME,
+          availableSheets: ss.getSheets().map(s => s.getName())
+        }
+      };
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    
+    // Debug info
+    const debugInfo = {
+      sheetName: sheet.getName(),
+      totalRows: data.length,
+      headers: data.length > 0 ? data[0] : [],
+      lastRow: sheet.getLastRow(),
+      lastColumn: sheet.getLastColumn()
+    };
+    
+    if (data.length <= 1) {
+      return { 
+        success: true, 
+        cases: [],
+        debug: { ...debugInfo, message: 'Only header row found' }
+      };
+    }
+    
+    const headers = data[0];
+    const cases = [];
+    
+    // Find column indices
+    const isDeletedIndex = headers.indexOf('IsDeleted');
+    
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      
+      // Skip empty rows (check if CaseID is empty)
+      if (!row[0] || row[0].toString().trim() === '') {
+        continue;
+      }
+      
+      // Skip deleted cases
+      if (isDeletedIndex !== -1 && (row[isDeletedIndex] === true || row[isDeletedIndex] === 'TRUE')) {
+        continue;
+      }
+      
+      const caseObj = {};
+      headers.forEach((header, index) => {
+        // Parse Notes JSON if present
+        if (header === 'Notes' && row[index]) {
+          try {
+            caseObj[header] = JSON.parse(row[index]);
+          } catch(e) {
+            caseObj[header] = [];
+          }
+        } else {
+          caseObj[header] = row[index];
+        }
+      });
+      
+      caseObj.rowNumber = i + 1;
+      cases.push(caseObj);
+    }
+    
+    return {
+      success: true,
+      cases: cases,
+      stages: CONFIG.RETRIEVAL_STAGES,
+      debug: { ...debugInfo, casesFound: cases.length }
+    };
+  } catch(error) {
+    Logger.log('getRetrievalCases error: ' + error.message);
+    return {
+      success: false,
+      error: error.message,
+      debug: { errorStack: error.stack }
+    };
+  }
+}
+
+/**
+ * Update the stage of a retrieval case
+ */
+function updateRetrievalStage(caseId, newStage, notes) {
+  try {
+    const sheet = initializeRetrievalSheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    // Find column indices
+    const caseIdIndex = headers.indexOf('CaseID');
+    const stageIndex = headers.indexOf('Stage');
+    const lastUpdatedIndex = headers.indexOf('LastUpdated');
+    const notesIndex = headers.indexOf('Notes');
+    const resolvedDateIndex = headers.indexOf('ResolvedDate');
+    const isDeletedIndex = headers.indexOf('IsDeleted');
+    
+    // Find the row with matching CaseID
+    let targetRow = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][caseIdIndex] === caseId) {
+        // Check if deleted
+        if (isDeletedIndex !== -1 && (data[i][isDeletedIndex] === true || data[i][isDeletedIndex] === 'TRUE')) {
+          return { success: false, error: 'Case has been deleted' };
+        }
+        targetRow = i + 1; // Sheet rows are 1-indexed
+        break;
+      }
+    }
+    
+    if (targetRow === -1) {
+      return { success: false, error: 'Case not found' };
+    }
+    
+    const now = new Date();
+    const stageNum = parseInt(newStage);
+    
+    // Update stage
+    sheet.getRange(targetRow, stageIndex + 1).setValue(stageNum);
+    
+    // Update last updated timestamp
+    sheet.getRange(targetRow, lastUpdatedIndex + 1).setValue(now);
+    
+    // Add note about stage change
+    let existingNotes = [];
+    try {
+      existingNotes = JSON.parse(data[targetRow - 1][notesIndex] || '[]');
+    } catch(e) {
+      existingNotes = [];
+    }
+    
+    const stageName = CONFIG.RETRIEVAL_STAGES[stageNum] || `Stage ${stageNum}`;
+    existingNotes.push({
+      timestamp: now.toISOString(),
+      text: `Stage changed to: ${stageName}${notes ? ' - ' + notes : ''}`,
+      type: 'stage_change'
+    });
+    
+    sheet.getRange(targetRow, notesIndex + 1).setValue(JSON.stringify(existingNotes));
+    
+    // If moving to stage 7 or 8, set resolved date
+    if (stageNum === 7 || stageNum === 8) {
+      sheet.getRange(targetRow, resolvedDateIndex + 1).setValue(now);
+    }
+    
+    return {
+      success: true,
+      message: `Case updated to ${stageName}`,
+      caseId: caseId,
+      newStage: stageNum
+    };
+  } catch(error) {
+    Logger.log('updateRetrievalStage error: ' + error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Update call status for Stage 3
+ */
+function updateRetrievalCallStatus(caseId, callStatus) {
+  try {
+    const sheet = initializeRetrievalSheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    const caseIdIndex = headers.indexOf('CaseID');
+    const callStatusIndex = headers.indexOf('CallStatus');
+    const notesIndex = headers.indexOf('Notes');
+    const lastUpdatedIndex = headers.indexOf('LastUpdated');
+    
+    // Find the row
+    let targetRow = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][caseIdIndex] === caseId) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+    
+    if (targetRow === -1) {
+      return { success: false, error: 'Case not found' };
+    }
+    
+    const now = new Date();
+    
+    // Update call status
+    sheet.getRange(targetRow, callStatusIndex + 1).setValue(callStatus);
+    sheet.getRange(targetRow, lastUpdatedIndex + 1).setValue(now);
+    
+    // Add note
+    let existingNotes = [];
+    try {
+      existingNotes = JSON.parse(data[targetRow - 1][notesIndex] || '[]');
+    } catch(e) {
+      existingNotes = [];
+    }
+    
+    const statusText = callStatus === 'successful' ? 'Call successful' : 'Call - Did not answer';
+    existingNotes.push({
+      timestamp: now.toISOString(),
+      text: statusText,
+      type: 'call_status'
+    });
+    
+    sheet.getRange(targetRow, notesIndex + 1).setValue(JSON.stringify(existingNotes));
+    
+    return {
+      success: true,
+      message: 'Call status updated',
+      callStatus: callStatus
+    };
+  } catch(error) {
+    Logger.log('updateRetrievalCallStatus error: ' + error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Soft delete a retrieval case
+ */
+function deleteRetrievalCase(caseId) {
+  try {
+    const sheet = initializeRetrievalSheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    const caseIdIndex = headers.indexOf('CaseID');
+    const isDeletedIndex = headers.indexOf('IsDeleted');
+    const notesIndex = headers.indexOf('Notes');
+    const lastUpdatedIndex = headers.indexOf('LastUpdated');
+    
+    // Find the row
+    let targetRow = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][caseIdIndex] === caseId) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+    
+    if (targetRow === -1) {
+      return { success: false, error: 'Case not found' };
+    }
+    
+    const now = new Date();
+    
+    // Soft delete
+    sheet.getRange(targetRow, isDeletedIndex + 1).setValue(true);
+    sheet.getRange(targetRow, lastUpdatedIndex + 1).setValue(now);
+    
+    // Add deletion note
+    let existingNotes = [];
+    try {
+      existingNotes = JSON.parse(data[targetRow - 1][notesIndex] || '[]');
+    } catch(e) {
+      existingNotes = [];
+    }
+    
+    existingNotes.push({
+      timestamp: now.toISOString(),
+      text: 'Case removed from retrieval program',
+      type: 'deleted'
+    });
+    
+    sheet.getRange(targetRow, notesIndex + 1).setValue(JSON.stringify(existingNotes));
+    
+    return {
+      success: true,
+      message: 'Case removed successfully',
+      caseId: caseId
+    };
+  } catch(error) {
+    Logger.log('deleteRetrievalCase error: ' + error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Add a note to a retrieval case
+ */
+function addRetrievalNote(caseId, noteText) {
+  try {
+    const sheet = initializeRetrievalSheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    const caseIdIndex = headers.indexOf('CaseID');
+    const notesIndex = headers.indexOf('Notes');
+    const lastUpdatedIndex = headers.indexOf('LastUpdated');
+    
+    // Find the row
+    let targetRow = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][caseIdIndex] === caseId) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+    
+    if (targetRow === -1) {
+      return { success: false, error: 'Case not found' };
+    }
+    
+    const now = new Date();
+    
+    // Add note
+    let existingNotes = [];
+    try {
+      existingNotes = JSON.parse(data[targetRow - 1][notesIndex] || '[]');
+    } catch(e) {
+      existingNotes = [];
+    }
+    
+    existingNotes.push({
+      timestamp: now.toISOString(),
+      text: noteText,
+      type: 'manual'
+    });
+    
+    sheet.getRange(targetRow, notesIndex + 1).setValue(JSON.stringify(existingNotes));
+    sheet.getRange(targetRow, lastUpdatedIndex + 1).setValue(now);
+    
+    return {
+      success: true,
+      message: 'Note added successfully',
+      notes: existingNotes
+    };
+  } catch(error) {
+    Logger.log('addRetrievalNote error: ' + error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// ============================================
+// EMAIL NOTIFICATION FUNCTIONS
+// ============================================
 
 /**
  * Send notification to HR when a device is marked as provisioned
@@ -1373,6 +2006,39 @@ function testMarkProvisioned() {
   Logger.log('Provisioned devices: ' + JSON.stringify(devices));
 }
 
+// Test due for return functions
+function testMarkDueForReturn() {
+  Logger.log('=== DUE FOR RETURN TEST ===');
+  
+  // Get the last row number for testing
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEET_NAME);
+  if (!sheet) {
+    Logger.log('Sheet not found');
+    return;
+  }
+  
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    Logger.log('No data rows to test with');
+    return;
+  }
+  
+  // Test marking as due for return
+  Logger.log('Marking row ' + lastRow + ' as due for return...');
+  const result = markDueForReturn(lastRow, true);
+  Logger.log('Result: ' + JSON.stringify(result));
+  
+  // Test getting due for return devices
+  Logger.log('Getting due for return devices...');
+  const devices = getDueForReturnDevices();
+  Logger.log('Due for return devices: ' + JSON.stringify(devices));
+  
+  // Test unmarking
+  Logger.log('Unmarking row ' + lastRow + ' as due for return...');
+  const unmarkResult = markDueForReturn(lastRow, false);
+  Logger.log('Unmark result: ' + JSON.stringify(unmarkResult));
+}
+
 /**
  * Migration utility: Add Provisioned column to existing spreadsheet
  * Run this once if you have an existing spreadsheet without the Provisioned column
@@ -1407,4 +2073,51 @@ function addProvisionedColumn() {
   }
   
   Logger.log('Provisioned column added successfully');
+}
+
+/**
+ * Migration utility: Add DueForReturn column to existing spreadsheet
+ * Run this once if you have an existing spreadsheet without the DueForReturn column
+ */
+function addDueForReturnColumn() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEET_NAME);
+  if (!sheet) {
+    Logger.log('Sheet not found');
+    return;
+  }
+  
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  
+  if (headers.indexOf('DueForReturn') !== -1) {
+    Logger.log('DueForReturn column already exists');
+    return;
+  }
+  
+  // Add the header
+  const newColIndex = headers.length + 1;
+  sheet.getRange(1, newColIndex).setValue('DueForReturn');
+  
+  // Set all existing rows to FALSE
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    const range = sheet.getRange(2, newColIndex, lastRow - 1, 1);
+    const values = [];
+    for (let i = 0; i < lastRow - 1; i++) {
+      values.push([false]);
+    }
+    range.setValues(values);
+  }
+  
+  Logger.log('DueForReturn column added successfully');
+}
+
+/**
+ * Migration utility: Add all missing columns to existing spreadsheet
+ * Run this once to ensure all required columns exist
+ */
+function addAllMissingColumns() {
+  Logger.log('=== Adding all missing columns ===');
+  addProvisionedColumn();
+  addDueForReturnColumn();
+  Logger.log('=== Migration complete ===');
 }

@@ -87,6 +87,62 @@ export async function getProvisionedDevices() {
   return apiRequest('getProvisionedDevices');
 }
 
+// Mark device as due for return
+export async function markDueForReturn(rowNumber, dueForReturn = true) {
+  return apiRequest('markDueForReturn', { rowNumber, dueForReturn });
+}
+
+// Get all devices marked as due for return
+export async function getDueForReturnDevices() {
+  return apiRequest('getDueForReturnDevices');
+}
+
+// ============================================
+// RETRIEVAL PROGRAM API
+// ============================================
+
+// Retrieval stages configuration
+export const RETRIEVAL_STAGES = {
+  1: { name: 'Terminated/Inactive', color: '#EF5350' },
+  2: { name: 'Text Sent to Staff', color: '#FF9800' },
+  3: { name: 'Staff Called', color: '#FFC107' },
+  4: { name: 'Final Follow Up', color: '#9C27B0' },
+  5: { name: 'Scheduled Dropoff', color: '#2196F3' },
+  6: { name: 'Awaiting Mailback', color: '#00BCD4' },
+  7: { name: 'Device Returned', color: '#4CAF50' },
+  8: { name: 'Remotely Offboarded', color: '#607D8B' }
+};
+
+// Create a new retrieval case (copies device info from Esper)
+export async function createRetrievalCase(data) {
+  return apiRequest('createRetrievalCase', data);
+}
+
+// Get all retrieval cases
+export async function getRetrievalCases() {
+  return apiRequest('getRetrievalCases');
+}
+
+// Update retrieval case stage
+export async function updateRetrievalStage(caseId, newStage, notes = '') {
+  return apiRequest('updateRetrievalStage', { caseId, newStage, notes });
+}
+
+// Update call status for Stage 3
+export async function updateRetrievalCallStatus(caseId, callStatus) {
+  return apiRequest('updateRetrievalCallStatus', { caseId, callStatus });
+}
+
+// Delete (soft) a retrieval case
+export async function deleteRetrievalCase(caseId) {
+  return apiRequest('deleteRetrievalCase', { caseId });
+}
+
+// Add a note to a retrieval case
+export async function addRetrievalNote(caseId, note) {
+  return apiRequest('addRetrievalNote', { caseId, note });
+}
+
 // Company information
 export const COMPANY_INFO = {
   name: 'AMBER COURT AT HOME D/B/A WELLBOUND',
@@ -145,6 +201,17 @@ export default {
   getAgreementByRowNumber,
   markDeviceProvisioned,
   getProvisionedDevices,
+  markDueForReturn,
+  getDueForReturnDevices,
+  // Retrieval Program
+  RETRIEVAL_STAGES,
+  createRetrievalCase,
+  getRetrievalCases,
+  updateRetrievalStage,
+  updateRetrievalCallStatus,
+  deleteRetrievalCase,
+  addRetrievalNote,
+  // Constants
   COMPANY_INFO,
   TITLE_OPTIONS,
   PROPERTY_ITEMS,

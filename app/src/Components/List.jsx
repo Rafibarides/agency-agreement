@@ -11,11 +11,12 @@ import {
   faTimes,
   faBox,
   faSpinner,
-  faTabletAlt
+  faTabletAlt,
+  faExclamationCircle
 } from '@fortawesome/free-solid-svg-icons';
 import Preview from './Preview';
 import DeviceInfoModal from './DeviceInfoModal';
-import { markDeviceProvisioned } from '../utils/api';
+import { markDeviceProvisioned, markDueForReturn } from '../utils/api';
 import { isEsperConfigured } from '../utils/esperApi';
 
 const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
@@ -24,7 +25,9 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
   const [copiedField, setCopiedField] = useState(null);
   const [returnedDevices, setReturnedDevices] = useState({});
   const [provisionedDevices, setProvisionedDevices] = useState({});
+  const [dueForReturnDevices, setDueForReturnDevices] = useState({});
   const [provisioningRow, setProvisioningRow] = useState(null);
+  const [dueForReturnRow, setDueForReturnRow] = useState(null);
   const [returnModal, setReturnModal] = useState(null);
   const [deviceInfoModal, setDeviceInfoModal] = useState(null);
   const itemsPerPage = 10;
@@ -121,6 +124,49 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
     }
   };
 
+  // Check if device is marked due for return
+  const isDueForReturn = (agreement) => {
+    const rowId = agreement.rowNumber;
+    return agreement.DueForReturn === true || agreement.DueForReturn === 'TRUE' || dueForReturnDevices[rowId];
+  };
+
+  const handleMarkDueForReturn = async (rowNumber) => {
+    setDueForReturnRow(rowNumber);
+    try {
+      const result = await markDueForReturn(rowNumber, true);
+      if (result.success) {
+        setDueForReturnDevices(prev => ({
+          ...prev,
+          [rowNumber]: true
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to mark as due for return:', err);
+    } finally {
+      setDueForReturnRow(null);
+      setReturnModal(null);
+    }
+  };
+
+  const handleUnmarkDueForReturn = async (rowNumber) => {
+    setDueForReturnRow(rowNumber);
+    try {
+      const result = await markDueForReturn(rowNumber, false);
+      if (result.success) {
+        setDueForReturnDevices(prev => {
+          const updated = { ...prev };
+          delete updated[rowNumber];
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error('Failed to unmark as due for return:', err);
+    } finally {
+      setDueForReturnRow(null);
+      setReturnModal(null);
+    }
+  };
+
   // Pagination logic
   const totalPages = Math.ceil(agreements.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -209,6 +255,7 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
                   const isReturned = returnedDevices[rowId];
                   const unsigned = isUnsigned(agreement);
                   const provisioned = isProvisioned(agreement);
+                  const dueReturn = isDueForReturn(agreement);
                   // Show "Ready for Pickup" only if provisioned AND still unsigned
                   const showReadyTag = provisioned && unsigned;
                   
@@ -216,7 +263,7 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
                     <tr 
                       key={rowId}
                       onDoubleClick={() => handleRowDoubleClick(agreement)}
-                      className={`${isReturned ? 'row-returned' : ''} ${showReadyTag ? 'row-provisioned' : ''}`}
+                      className={`${isReturned ? 'row-returned' : ''} ${showReadyTag ? 'row-provisioned' : ''} ${dueReturn ? 'row-due-return' : ''}`}
                       style={{ cursor: 'pointer', position: 'relative' }}
                     >
                       <td>{formatDate(agreement.Timestamp)}</td>
@@ -230,6 +277,9 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
                         )}
                         {showReadyTag && (
                           <span className="provisioned-badge">Ready for Pickup</span>
+                        )}
+                        {dueReturn && !isReturned && (
+                          <span className="due-return-badge">Due for Return</span>
                         )}
                       </td>
                       <td>{agreement.Title ? agreement.Title.split('–')[0].trim() : '-'}</td>
@@ -391,6 +441,52 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
                 </button>
               )}
               
+              {/* Due for Return option */}
+              {isDueForReturn(returnModal) ? (
+                <button 
+                  className="btn btn-secondary"
+                  onClick={() => handleUnmarkDueForReturn(returnModal.rowNumber)}
+                  disabled={dueForReturnRow === returnModal.rowNumber}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  {dueForReturnRow === returnModal.rowNumber ? (
+                    <>
+                      <FontAwesomeIcon icon={faSpinner} spin />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <FontAwesomeIcon icon={faUndo} />
+                      Unmark Due for Return
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button 
+                  className="btn btn-due-return"
+                  onClick={() => handleMarkDueForReturn(returnModal.rowNumber)}
+                  disabled={dueForReturnRow === returnModal.rowNumber}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  {dueForReturnRow === returnModal.rowNumber ? (
+                    <>
+                      <FontAwesomeIcon icon={faSpinner} spin />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <FontAwesomeIcon icon={faExclamationCircle} />
+                      <span>
+                        Due for Return
+                        <small style={{ display: 'block', fontSize: '0.7rem', opacity: 0.8, fontWeight: 400 }}>
+                          Flag for coordinator retrieval
+                        </small>
+                      </span>
+                    </>
+                  )}
+                </button>
+              )}
+
               {/* Return status option */}
               {returnedDevices[returnModal.rowNumber] ? (
                 <button 

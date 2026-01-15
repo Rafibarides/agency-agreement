@@ -5,15 +5,19 @@ import {
   faShieldAlt, 
   faChartLine,
   faClipboardList,
-  faUserTie
+  faUserTie,
+  faUsersCog
 } from '@fortawesome/free-solid-svg-icons';
 import FormPage from './Pages/FormPage';
 import AdminPage from './Pages/AdminPage';
 import Dashboard from './Pages/Dashboard';
 import APFList from './Pages/APFList';
 import HRPage from './Pages/HRPage';
+import CoordinatorPage from './Pages/CoordinatorPage';
+import RetrievalPage from './Pages/RetrievalPage';
 import PinModal from './Components/PinModal';
 import HRLoginModal from './Components/HRLoginModal';
+import CoordinatorLoginModal from './Components/CoordinatorLoginModal';
 import './App.css';
 
 const PAGES = {
@@ -21,14 +25,19 @@ const PAGES = {
   ADMIN: 'admin',
   DASHBOARD: 'dashboard',
   APF: 'apf',
-  HR: 'hr'
+  HR: 'hr',
+  COORDINATOR: 'coordinator',
+  RETRIEVAL: 'retrieval'
 };
 
 function App() {
   const [currentPage, setCurrentPage] = useState(PAGES.FORM);
+  const [previousPage, setPreviousPage] = useState(PAGES.FORM);
   const [showPinModal, setShowPinModal] = useState(false);
   const [showHRLoginModal, setShowHRLoginModal] = useState(false);
+  const [showCoordinatorLoginModal, setShowCoordinatorLoginModal] = useState(false);
   const [hrUserEmail, setHRUserEmail] = useState(null);
+  const [coordinatorEmail, setCoordinatorEmail] = useState(null);
   const [prefillData, setPrefillData] = useState(null);
 
   const handleAPFClick = () => {
@@ -58,6 +67,33 @@ function App() {
     setCurrentPage(PAGES.FORM);
   };
 
+  const handleCoordinatorClick = () => {
+    if (coordinatorEmail) {
+      setCurrentPage(PAGES.COORDINATOR);
+    } else {
+      setShowCoordinatorLoginModal(true);
+    }
+  };
+
+  const handleCoordinatorLoginSuccess = (email) => {
+    setCoordinatorEmail(email);
+    setCurrentPage(PAGES.COORDINATOR);
+  };
+
+  const handleCoordinatorLogout = () => {
+    setCoordinatorEmail(null);
+    setCurrentPage(PAGES.FORM);
+  };
+
+  const handleOpenRetrieval = () => {
+    setPreviousPage(currentPage);
+    setCurrentPage(PAGES.RETRIEVAL);
+  };
+
+  const handleCloseRetrieval = () => {
+    setCurrentPage(previousPage);
+  };
+
   const handleSelectPrefill = (data) => {
     setPrefillData(data);
     setCurrentPage(PAGES.FORM);
@@ -70,13 +106,17 @@ function App() {
   const renderPage = () => {
     switch (currentPage) {
       case PAGES.ADMIN:
-        return <AdminPage />;
+        return <AdminPage onOpenRetrieval={handleOpenRetrieval} />;
       case PAGES.DASHBOARD:
         return <Dashboard />;
       case PAGES.APF:
         return <APFList onSelectAgreement={handleSelectPrefill} />;
       case PAGES.HR:
         return <HRPage userEmail={hrUserEmail} onLogout={handleHRLogout} />;
+      case PAGES.COORDINATOR:
+        return <CoordinatorPage userEmail={coordinatorEmail} onLogout={handleCoordinatorLogout} onOpenRetrieval={handleOpenRetrieval} />;
+      case PAGES.RETRIEVAL:
+        return <RetrievalPage onBack={handleCloseRetrieval} />;
       case PAGES.FORM:
       default:
         return <FormPage prefillData={prefillData} onReset={handleFormReset} />;
@@ -117,6 +157,13 @@ function App() {
             HR
           </button>
           <button
+            className={`nav-link ${currentPage === PAGES.COORDINATOR ? 'active' : ''}`}
+            onClick={handleCoordinatorClick}
+          >
+            <FontAwesomeIcon icon={faUsersCog} style={{ marginRight: '0.5rem' }} />
+            Coordinator
+          </button>
+          <button
             className={`nav-link ${currentPage === PAGES.DASHBOARD ? 'active' : ''}`}
             onClick={() => setCurrentPage(PAGES.DASHBOARD)}
           >
@@ -140,6 +187,17 @@ function App() {
               {hrUserEmail.substring(0, 2).toUpperCase()}
             </div>
           )}
+          {/* Coordinator Avatar - shows when logged in */}
+          {coordinatorEmail && (
+            <div 
+              className="nav-avatar"
+              title={coordinatorEmail}
+              onClick={() => setCurrentPage(PAGES.COORDINATOR)}
+              style={{ background: 'linear-gradient(135deg, #64B5F6, #42A5F5)' }}
+            >
+              {coordinatorEmail.substring(0, 2).toUpperCase()}
+            </div>
+          )}
         </div>
       </nav>
 
@@ -159,6 +217,13 @@ function App() {
         isOpen={showHRLoginModal}
         onClose={() => setShowHRLoginModal(false)}
         onSuccess={handleHRLoginSuccess}
+      />
+
+      {/* Coordinator Login Modal */}
+      <CoordinatorLoginModal
+        isOpen={showCoordinatorLoginModal}
+        onClose={() => setShowCoordinatorLoginModal(false)}
+        onSuccess={handleCoordinatorLoginSuccess}
       />
     </div>
   );

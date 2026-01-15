@@ -496,6 +496,349 @@ export async function getMultipleDevicesReport() {
   };
 }
 
+/**
+ * Determine if a device has cellular/5G capability
+ * Cellular devices have IMEI numbers, WiFi-only devices don't
+ */
+function isCellularDevice(device) {
+  // Check for IMEI - cellular devices have IMEI, WiFi-only don't
+  const hasImei = !!(
+    device.imei1 || 
+    device.imei2 || 
+    device.networkInfo?.imei1 || 
+    device.networkInfo?.imei2 ||
+    (device.networkInfo?.imeiList && device.networkInfo.imeiList.length > 0)
+  );
+  
+  // Check for cellular network info
+  const hasCellularInfo = !!(
+    device.networkInfo?.cellularNetworkType ||
+    device.networkInfo?.phoneNumber ||
+    device.networkInfo?.simOperator ||
+    device.networkInfo?.simOperatorName
+  );
+  
+  return hasImei || hasCellularInfo;
+}
+
+/**
+ * Get connectivity type for a device
+ */
+function getConnectivityType(device) {
+  const cellular = isCellularDevice(device);
+  
+  // Try to determine if it's 5G vs LTE
+  const networkType = device.networkInfo?.cellularNetworkType?.toUpperCase() || '';
+  
+  if (cellular) {
+    if (networkType.includes('5G') || networkType.includes('NR')) {
+      return '5G';
+    } else if (networkType.includes('LTE') || networkType.includes('4G')) {
+      return 'LTE';
+    }
+    return 'Cellular'; // Generic cellular
+  }
+  
+  return 'WiFi';
+}
+
+/**
+ * Get report of devices categorized by connectivity (5G/LTE/Cellular vs WiFi)
+ * Groups devices by connectivity type and includes assigned person info
+ */
+export async function getCellularDeviceReport() {
+  const devices = await getAllDevices();
+  
+  const cellularDevices = [];
+  const wifiDevices = [];
+  
+  for (const device of devices) {
+    const connectivityType = getConnectivityType(device);
+    const personInfo = extractPersonIdentifier(device.tags);
+    const name = extractNameFromDeviceTags(device.tags);
+    const title = extractTitleFromDeviceTags(device.tags);
+    const workerId = personInfo?.type === 'workerId' ? personInfo.value : null;
+    
+    const deviceRecord = {
+      id: device.id,
+      deviceName: device.device_name,
+      aliasName: device.alias_name,
+      serialNumber: device.hardwareInfo?.serialNumber || device.suid,
+      model: device.hardwareInfo?.model,
+      brand: device.hardwareInfo?.brand,
+      state: device.state,
+      lastSeen: device.softwareInfo?.lastSeen,
+      provisionedDate: device.created_on,
+      androidVersion: device.softwareInfo?.androidVersion,
+      connectivityType,
+      // Network details for cellular
+      imei: device.imei1 || device.networkInfo?.imei1 || null,
+      imei2: device.imei2 || device.networkInfo?.imei2 || null,
+      phoneNumber: device.networkInfo?.phoneNumber || null,
+      simOperator: device.networkInfo?.simOperatorName || device.networkInfo?.simOperator || null,
+      cellularNetworkType: device.networkInfo?.cellularNetworkType || null,
+      // Person info
+      assignedTo: name || (personInfo?.value) || null,
+      workerId: workerId,
+      title: title,
+      tags: device.tags || []
+    };
+    
+    if (connectivityType === 'WiFi') {
+      wifiDevices.push(deviceRecord);
+    } else {
+      cellularDevices.push(deviceRecord);
+    }
+  }
+  
+  // Sort by assigned person name
+  const sortByName = (a, b) => {
+    const nameA = (a.assignedTo || 'ZZZ').toLowerCase();
+    const nameB = (b.assignedTo || 'ZZZ').toLowerCase();
+    return nameA.localeCompare(nameB);
+  };
+  
+  cellularDevices.sort(sortByName);
+  wifiDevices.sort(sortByName);
+  
+  // Count by specific type
+  const fiveGCount = cellularDevices.filter(d => d.connectivityType === '5G').length;
+  const lteCount = cellularDevices.filter(d => d.connectivityType === 'LTE').length;
+  const genericCellularCount = cellularDevices.filter(d => d.connectivityType === 'Cellular').length;
+  
+  return {
+    totalDevices: devices.length,
+    cellularCount: cellularDevices.length,
+    wifiCount: wifiDevices.length,
+    fiveGCount,
+    lteCount,
+    genericCellularCount,
+    cellularDevices,
+    wifiDevices,
+    generatedAt: new Date().toISOString()
+  };
+}
+
+/**
+ * Get devices that haven't been seen in a specified number of months
+ * Uses the same lastHeartbeatTime field that tracks device activity (like "over 24 hours" check)
+ * @param {number} months - Number of months of inactivity (default: 5)
+ * @returns {Object} Report with stale devices
+ */
+export async function getStaleDevices(months = 5) {
+  const devices = await getAllDevices();
+  
+  // Calculate cutoff date (X months ago from today)
+  const cutoffDate = new Date();
+  cutoffDate.setMonth(cutoffDate.getMonth() - months);
+  
+  const staleDevices = [];
+  let devicesWithLastSeen = 0;
+  
+  for (const device of devices) {
+    // Get the last seen date - check all possible field locations from Esper API
+    // Priority: lastHeartbeatTime (most reliable) > lastSeen
+    const lastSeenStr = device.softwareInfo?.lastHeartbeatTime ||
+                        device.status?.lastHeartbeatTime ||
+                        device.lastHeartbeatTime ||
+                        device.softwareInfo?.lastSeen || 
+                        device.status?.lastSeen ||
+                        device.last_seen ||
+                        device.status_time ||
+                        null;
+    
+    // Skip devices without a last seen date - we can't determine if they're stale
+    if (!lastSeenStr) {
+      continue;
+    }
+    
+    const lastSeenDate = new Date(lastSeenStr);
+    
+    // Validate the date is valid
+    if (isNaN(lastSeenDate.getTime())) {
+      continue;
+    }
+    
+    // Skip if the date is in the future (data error)
+    if (lastSeenDate > new Date()) {
+      continue;
+    }
+    
+    devicesWithLastSeen++;
+    
+    // Check if last seen is before the cutoff date (i.e., inactive for > X months)
+    if (lastSeenDate < cutoffDate) {
+      const personInfo = extractPersonIdentifier(device.tags);
+      const name = extractNameFromDeviceTags(device.tags);
+      const title = extractTitleFromDeviceTags(device.tags);
+      
+      // Calculate days since last seen
+      const now = new Date();
+      const diffTime = Math.abs(now - lastSeenDate);
+      const daysSinceLastSeen = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      staleDevices.push({
+        id: device.id,
+        deviceName: device.device_name,
+        aliasName: device.alias_name,
+        serialNumber: device.hardwareInfo?.serialNumber || device.suid,
+        model: device.hardwareInfo?.model,
+        brand: device.hardwareInfo?.brand,
+        state: device.state,
+        lastSeen: lastSeenStr,
+        lastSeenFormatted: lastSeenDate.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        }),
+        daysSinceLastSeen,
+        assignedTo: name || (personInfo?.value) || null,
+        workerId: personInfo?.type === 'workerId' ? personInfo.value : null,
+        title: title,
+        tags: device.tags || []
+      });
+    }
+  }
+  
+  // Sort by days since last seen (most stale first)
+  staleDevices.sort((a, b) => b.daysSinceLastSeen - a.daysSinceLastSeen);
+  
+  return {
+    totalDevices: devices.length,
+    devicesWithActivityData: devicesWithLastSeen,
+    staleCount: staleDevices.length,
+    monthsThreshold: months,
+    cutoffDate: cutoffDate.toISOString(),
+    staleDevices,
+    generatedAt: new Date().toISOString()
+  };
+}
+
+/**
+ * Get devices grouped by practice/title with PointCare app info
+ * Returns counts by role and detailed device list for drill-down
+ */
+export async function getDevicesByPractice() {
+  const devices = await getAllDevices();
+  
+  // Practice/title mapping
+  const PRACTICE_MAP = {
+    'RN': { name: 'Registered Nurse', abbrev: 'RN' },
+    'LPN': { name: 'Licensed Practical Nurse', abbrev: 'LPN' },
+    'PT': { name: 'Physical Therapist', abbrev: 'PT' },
+    'PTA': { name: 'Physical Therapist Assistant', abbrev: 'PTA' },
+    'OT': { name: 'Occupational Therapist', abbrev: 'OT' },
+    'COTA': { name: 'Certified Occupational Therapy Assistant', abbrev: 'COTA' },
+    'ST': { name: 'Speech Therapist', abbrev: 'ST' },
+    'SLP': { name: 'Speech Therapist', abbrev: 'ST' },
+  };
+  
+  // Group devices by practice
+  const byPractice = {};
+  const unassigned = [];
+  
+  for (const device of devices) {
+    const title = extractTitleFromDeviceTags(device.tags);
+    const name = extractNameFromDeviceTags(device.tags);
+    const personInfo = extractPersonIdentifier(device.tags);
+    const workerId = personInfo?.type === 'workerId' ? personInfo.value : null;
+    
+    const deviceRecord = {
+      id: device.id,
+      deviceName: device.device_name,
+      aliasName: device.alias_name,
+      serialNumber: device.hardwareInfo?.serialNumber || device.suid,
+      model: device.hardwareInfo?.model,
+      brand: device.hardwareInfo?.brand,
+      state: device.state,
+      lastSeen: device.softwareInfo?.lastSeen,
+      assignedTo: name || (personInfo?.value) || null,
+      workerId: workerId,
+      title: title,
+      tags: device.tags || [],
+      // PointCare info will be populated on drill-down
+      pointCareVersion: null,
+      pointCareLoaded: false
+    };
+    
+    if (title && PRACTICE_MAP[title]) {
+      const practiceKey = PRACTICE_MAP[title].abbrev;
+      if (!byPractice[practiceKey]) {
+        byPractice[practiceKey] = {
+          abbrev: practiceKey,
+          name: PRACTICE_MAP[title].name,
+          count: 0,
+          devices: []
+        };
+      }
+      byPractice[practiceKey].count++;
+      byPractice[practiceKey].devices.push(deviceRecord);
+    } else {
+      unassigned.push(deviceRecord);
+    }
+  }
+  
+  // Sort devices within each practice by name
+  Object.values(byPractice).forEach(practice => {
+    practice.devices.sort((a, b) => {
+      const nameA = (a.assignedTo || 'ZZZ').toLowerCase();
+      const nameB = (b.assignedTo || 'ZZZ').toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  });
+  
+  // Sort practices by count (descending)
+  const sortedPractices = Object.values(byPractice).sort((a, b) => b.count - a.count);
+  
+  return {
+    totalDevices: devices.length,
+    assignedCount: devices.length - unassigned.length,
+    unassignedCount: unassigned.length,
+    practices: sortedPractices,
+    unassigned: unassigned,
+    generatedAt: new Date().toISOString()
+  };
+}
+
+/**
+ * Get PointCare app info for a list of devices
+ * @param {Array} deviceIds - Array of device IDs to fetch PointCare info for
+ * @returns {Object} Map of deviceId -> pointCareInfo
+ */
+export async function getPointCareForDevices(deviceIds) {
+  const results = {};
+  
+  // Process in batches to avoid overwhelming the API
+  const batchSize = 5;
+  for (let i = 0; i < deviceIds.length; i += batchSize) {
+    const batch = deviceIds.slice(i, i + batchSize);
+    
+    await Promise.all(batch.map(async (deviceId) => {
+      try {
+        const apps = await getDeviceApps(deviceId);
+        const pointCareApp = apps.find(app => 
+          app.app_name?.toLowerCase().includes('pointcare') ||
+          app.package_name?.toLowerCase().includes('pointcare') ||
+          app.app_name?.toLowerCase().includes('point care')
+        );
+        
+        results[deviceId] = pointCareApp ? {
+          version: pointCareApp.version_name,
+          versionCode: pointCareApp.version_code,
+          packageName: pointCareApp.package_name,
+          state: pointCareApp.state,
+          isActive: pointCareApp.is_active
+        } : null;
+      } catch (err) {
+        console.warn(`Failed to get apps for device ${deviceId}:`, err.message);
+        results[deviceId] = null;
+      }
+    }));
+  }
+  
+  return results;
+}
+
 export default {
   searchDeviceByName,
   searchDeviceByEsperCode,
@@ -510,4 +853,8 @@ export default {
   isEsperConfigured,
   getAllDevices,
   getMultipleDevicesReport,
+  getCellularDeviceReport,
+  getStaleDevices,
+  getDevicesByPractice,
+  getPointCareForDevices,
 };

@@ -787,6 +787,43 @@
   border-color: #FFB74D;
 }
 
+/* Due for Return Badge */
+.due-return-badge {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(229, 115, 115, 0.2);
+  color: #E57373;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+/* Due for Return Row Styling */
+.data-table tr.row-due-return {
+  background: rgba(229, 115, 115, 0.05);
+}
+
+.data-table tr.row-due-return:hover {
+  background: rgba(229, 115, 115, 0.1);
+}
+
+/* Due for Return Button */
+.btn-due-return {
+  background: linear-gradient(135deg, rgba(229, 115, 115, 0.3), rgba(229, 115, 115, 0.15));
+  color: #E57373;
+  border: 1px solid rgba(229, 115, 115, 0.4);
+  text-align: left;
+}
+
+.btn-due-return:hover {
+  background: linear-gradient(135deg, rgba(229, 115, 115, 0.4), rgba(229, 115, 115, 0.25));
+  border-color: #E57373;
+}
+
 /* Return Modal */
 .return-modal {
   background: var(--dark-purple);
@@ -1880,6 +1917,32 @@
   color: #E57373;
 }
 
+/* ============================================
+   COORDINATOR LOGIN MODAL
+   ============================================ */
+
+.coordinator-login-modal {
+  background: var(--dark-purple);
+  border: 1px solid rgba(100, 181, 246, 0.3);
+  border-radius: 16px;
+  width: 380px;
+  max-width: 95vw;
+  overflow: hidden;
+}
+
+.coordinator-login-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: linear-gradient(135deg, rgba(100, 181, 246, 0.1), rgba(100, 181, 246, 0.05));
+}
+
+.coordinator-login-body {
+  padding: 1.5rem;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .report-modal {
@@ -1903,5 +1966,634 @@
 
   .report-devices-table table {
     min-width: 500px;
+  }
+}
+
+/* ============================================
+   DEVICE RETRIEVAL PROGRAM - KANBAN BOARD
+   ============================================ */
+
+.retrieval-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: calc(100vh - 100px);
+  padding: 1rem;
+}
+
+.retrieval-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 0.5rem 1rem;
+  border-bottom: 1px solid var(--glass-border);
+  margin-bottom: 1rem;
+}
+
+.retrieval-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.retrieval-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.retrieval-header .header-right {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Kanban Board Container */
+.kanban-board {
+  display: flex;
+  gap: 1rem;
+  flex: 1;
+  overflow-x: auto;
+  padding-bottom: 1rem;
+}
+
+.kanban-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 1rem;
+  color: var(--text-secondary);
+}
+
+/* Kanban Column */
+.kanban-column {
+  flex: 0 0 280px;
+  min-width: 280px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 200px);
+}
+
+.kanban-column.success {
+  background: rgba(76, 175, 80, 0.05);
+  border-color: rgba(76, 175, 80, 0.3);
+}
+
+.kanban-column.closed {
+  background: rgba(96, 125, 139, 0.05);
+  border-color: rgba(96, 125, 139, 0.3);
+}
+
+/* Column Header */
+.kanban-column-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 2px solid;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 12px 12px 0 0;
+}
+
+.kanban-column-header .column-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.kanban-column-header .stage-number {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: white;
+}
+
+.kanban-column-header .stage-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kanban-column-header .case-count {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  padding: 0.2rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.kanban-column-header .add-case-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  border: none;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.kanban-column-header .add-case-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(206, 147, 216, 0.4);
+}
+
+/* Column Body */
+.kanban-column-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.kanban-column-body .empty-column {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  padding: 2rem 1rem;
+  border: 2px dashed var(--glass-border);
+  border-radius: 8px;
+  margin: 0.5rem;
+}
+
+/* Kanban Card */
+.kanban-card {
+  background: var(--dark-purple);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  cursor: grab;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.kanban-card:hover {
+  border-color: var(--accent-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.kanban-card.dragging {
+  opacity: 0.5;
+  transform: rotate(3deg);
+}
+
+.kanban-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.kanban-card-header .drag-handle {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.kanban-card-header .card-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kanban-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.kanban-card-body .card-detail {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.kanban-card-body .card-detail svg {
+  width: 12px;
+  opacity: 0.6;
+}
+
+.kanban-card-body .card-detail .serial {
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 0.7rem;
+}
+
+/* Call Status Badge */
+.call-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.call-status-badge.success {
+  background: rgba(76, 175, 80, 0.2);
+  color: #81C784;
+}
+
+.call-status-badge.dna {
+  background: rgba(255, 152, 0, 0.2);
+  color: #FFB74D;
+}
+
+.kanban-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--glass-border);
+}
+
+.kanban-card-footer .card-date {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.kanban-card-footer .notes-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+}
+
+/* Context Menu */
+.kanban-context-menu {
+  position: fixed;
+  background: var(--dark-purple);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 0.5rem 0;
+  min-width: 200px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+
+.kanban-context-menu .context-menu-header {
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--glass-border);
+  margin-bottom: 0.25rem;
+}
+
+.kanban-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.kanban-context-menu button:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.kanban-context-menu button.danger {
+  color: #EF5350;
+}
+
+.kanban-context-menu button.danger:hover {
+  background: rgba(239, 83, 80, 0.1);
+}
+
+.kanban-context-menu .context-menu-divider {
+  height: 1px;
+  background: var(--glass-border);
+  margin: 0.25rem 0;
+}
+
+.kanban-context-menu .context-submenu {
+  padding: 0.5rem 1rem;
+}
+
+.kanban-context-menu .submenu-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.kanban-context-menu .stage-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.kanban-context-menu .stage-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 4px;
+  border: 2px solid;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Note Modal */
+.note-modal {
+  background: var(--dark-purple);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  width: 400px;
+  max-width: 95vw;
+}
+
+.note-modal h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.note-modal textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+}
+
+.note-modal textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.note-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+/* ============================================
+   ADD RETRIEVAL MODAL
+   ============================================ */
+
+.add-retrieval-modal {
+  background: var(--dark-purple);
+  border: 1px solid rgba(239, 83, 80, 0.3);
+  border-radius: 16px;
+  width: 600px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.add-retrieval-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.1), rgba(239, 83, 80, 0.05));
+}
+
+.add-retrieval-search {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--glass-border);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.add-retrieval-search .search-icon {
+  color: var(--text-muted);
+}
+
+.add-retrieval-search .search-input {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.add-retrieval-search .search-input:focus {
+  outline: none;
+}
+
+.add-retrieval-search .search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.add-retrieval-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.add-retrieval-body .loading-state,
+.add-retrieval-body .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  color: var(--text-secondary);
+  gap: 1rem;
+}
+
+.add-retrieval-body .device-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.add-retrieval-body .device-item {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--glass-border);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.add-retrieval-body .device-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.add-retrieval-body .device-item.selected {
+  background: rgba(206, 147, 216, 0.1);
+  border-left: 3px solid var(--accent-primary);
+}
+
+.add-retrieval-body .device-item-main {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+}
+
+.add-retrieval-body .device-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.add-retrieval-body .device-info {
+  flex: 1;
+}
+
+.add-retrieval-body .device-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.add-retrieval-body .device-name .title-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(206, 147, 216, 0.2);
+  color: var(--accent-primary);
+}
+
+.add-retrieval-body .device-details {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.add-retrieval-body .device-details span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.add-retrieval-body .device-details svg {
+  font-size: 0.65rem;
+  opacity: 0.6;
+}
+
+.add-retrieval-body .selected-indicator {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.add-retrieval-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--glass-border);
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.add-retrieval-footer .footer-info {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.add-retrieval-footer .footer-info strong {
+  color: var(--text-primary);
+}
+
+.add-retrieval-footer .footer-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Retrieval Program Button */
+.btn-retrieval {
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.3), rgba(239, 83, 80, 0.15));
+  color: #EF5350;
+  border: 1px solid rgba(239, 83, 80, 0.4);
+}
+
+.btn-retrieval:hover {
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.4), rgba(239, 83, 80, 0.25));
+  border-color: #EF5350;
+}
+
+/* Responsive adjustments for Kanban */
+@media (max-width: 1024px) {
+  .kanban-column {
+    flex: 0 0 250px;
+    min-width: 250px;
+  }
+}
+
+@media (max-width: 768px) {
+  .retrieval-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .retrieval-header h1 {
+    font-size: 1.2rem;
+  }
+
+  .kanban-column {
+    flex: 0 0 85vw;
+    min-width: 85vw;
   }
 }

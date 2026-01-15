@@ -8,9 +8,14 @@ import {
   faRefresh,
   faCopy,
   faCheck,
-  faTimes
+  faTimes,
+  faExclamationTriangle,
+  faUser,
+  faIdCard,
+  faClock
 } from '@fortawesome/free-solid-svg-icons';
 import { getStatistics, getAllAgreements } from '../utils/api';
+import { getStaleDevices, isEsperConfigured, formatDeviceState } from '../utils/esperApi';
 import colors from '../utils/colors';
 
 const Dashboard = () => {
@@ -24,9 +29,18 @@ const Dashboard = () => {
   const [esperCodes, setEsperCodes] = useState([]);
   const [esperLoading, setEsperLoading] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
+  
+  // Stale devices state
+  const [staleDevicesData, setStaleDevicesData] = useState(null);
+  const [staleLoading, setStaleLoading] = useState(false);
+  const [showStaleList, setShowStaleList] = useState(false);
+  const esperConfigured = isEsperConfigured();
 
   useEffect(() => {
     fetchStats();
+    if (esperConfigured) {
+      fetchStaleDevices();
+    }
   }, []);
 
   const fetchStats = async () => {
@@ -40,6 +54,18 @@ const Dashboard = () => {
       console.error('Failed to fetch stats:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchStaleDevices = async () => {
+    setStaleLoading(true);
+    try {
+      const result = await getStaleDevices(5); // 5 months
+      setStaleDevicesData(result);
+    } catch (err) {
+      console.error('Failed to fetch stale devices:', err);
+    } finally {
+      setStaleLoading(false);
     }
   };
 
@@ -157,6 +183,188 @@ const Dashboard = () => {
               </button>
             </div>
           </div>
+
+          {/* Stale Devices Panel */}
+          {esperConfigured && (
+            <div className="form-section" style={{ marginBottom: '2rem' }}>
+              <h2 className="form-section-title" style={{ color: '#FFB74D' }}>
+                <FontAwesomeIcon icon={faExclamationTriangle} />
+                Inactive Devices
+              </h2>
+              
+              {staleLoading ? (
+                <div className="loading">
+                  <div className="spinner"></div>
+                  Checking device activity...
+                </div>
+              ) : staleDevicesData ? (
+                <>
+                  {/* Alert Banner */}
+                  <div style={{
+                    padding: '1rem 1.25rem',
+                    background: staleDevicesData.staleCount > 0 
+                      ? 'rgba(255, 183, 77, 0.15)' 
+                      : 'rgba(76, 175, 80, 0.15)',
+                    border: `1px solid ${staleDevicesData.staleCount > 0 ? 'rgba(255, 183, 77, 0.4)' : 'rgba(76, 175, 80, 0.4)'}`,
+                    borderRadius: '10px',
+                    marginBottom: '1rem'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '0.75rem'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <FontAwesomeIcon 
+                          icon={staleDevicesData.staleCount > 0 ? faExclamationTriangle : faCheck} 
+                          style={{ 
+                            color: staleDevicesData.staleCount > 0 ? '#FFB74D' : '#81C784',
+                            fontSize: '1.25rem'
+                          }} 
+                        />
+                        <div>
+                          <div style={{ 
+                            fontWeight: 600, 
+                            color: staleDevicesData.staleCount > 0 ? '#FFB74D' : '#81C784',
+                            fontSize: '1.1rem'
+                          }}>
+                            {staleDevicesData.staleCount > 0 
+                              ? `${staleDevicesData.staleCount} device${staleDevicesData.staleCount !== 1 ? 's' : ''} not used in 5+ months`
+                              : 'All devices active'}
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: colors.textMuted, marginTop: '0.2rem' }}>
+                            Out of {staleDevicesData.totalDevices} total devices
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        {staleDevicesData.staleCount > 0 && (
+                          <button 
+                            className="btn btn-secondary btn-small"
+                            onClick={() => setShowStaleList(!showStaleList)}
+                          >
+                            {showStaleList ? (
+                              <>
+                                <FontAwesomeIcon icon={faTimes} />
+                                Hide List
+                              </>
+                            ) : (
+                              <>
+                                <FontAwesomeIcon icon={faClock} />
+                                View List
+                              </>
+                            )}
+                          </button>
+                        )}
+                        <button 
+                          className="btn btn-secondary btn-small btn-icon"
+                          onClick={fetchStaleDevices}
+                          title="Refresh"
+                        >
+                          <FontAwesomeIcon icon={faRefresh} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Stale Devices List */}
+                  {showStaleList && staleDevicesData.staleCount > 0 && (
+                    <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                      {staleDevicesData.staleDevices.map((device, index) => (
+                        <div 
+                          key={device.id || index}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            padding: '0.875rem 1rem',
+                            background: 'rgba(255, 183, 77, 0.08)',
+                            border: '1px solid rgba(255, 183, 77, 0.15)',
+                            borderRadius: '8px',
+                            marginBottom: '0.5rem'
+                          }}
+                        >
+                          <div style={{ flex: 1 }}>
+                            <div style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: '0.5rem',
+                              marginBottom: '0.35rem'
+                            }}>
+                              <FontAwesomeIcon icon={faUser} style={{ color: colors.textMuted, fontSize: '0.8rem' }} />
+                              <span style={{ fontWeight: 600, color: colors.textPrimary }}>
+                                {device.assignedTo || 'Unassigned'}
+                              </span>
+                              {device.title && (
+                                <span style={{
+                                  fontSize: '0.7rem',
+                                  padding: '0.1rem 0.4rem',
+                                  background: 'rgba(230, 119, 179, 0.2)',
+                                  borderRadius: '4px',
+                                  color: colors.accentPink
+                                }}>
+                                  {device.title}
+                                </span>
+                              )}
+                            </div>
+                            
+                            <div style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: '1rem',
+                              fontSize: '0.85rem',
+                              color: colors.textSecondary,
+                              flexWrap: 'wrap'
+                            }}>
+                              {device.workerId && (
+                                <span>
+                                  <FontAwesomeIcon icon={faIdCard} style={{ marginRight: '0.3rem', fontSize: '0.75rem' }} />
+                                  {device.workerId}
+                                </span>
+                              )}
+                              <span style={{ fontFamily: 'monospace', color: colors.accentPink }}>
+                                {device.deviceName?.match(/ESR-NNV-([A-Z0-9]+)$/i)?.[1] || device.serialNumber?.slice(0, 10) || 'Unknown'}
+                              </span>
+                              <span style={{ color: colors.textMuted }}>
+                                {device.model || device.brand || ''}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div style={{ 
+                            textAlign: 'right',
+                            flexShrink: 0,
+                            marginLeft: '1rem'
+                          }}>
+                            <div style={{ 
+                              fontSize: '0.9rem', 
+                              fontWeight: 600, 
+                              color: '#FFB74D',
+                              marginBottom: '0.2rem'
+                            }}>
+                              {device.daysSinceLastSeen 
+                                ? `${device.daysSinceLastSeen} days ago`
+                                : 'Never seen'}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: colors.textMuted }}>
+                              {device.lastSeenFormatted}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p style={{ color: colors.textMuted, textAlign: 'center' }}>
+                  Unable to load device activity data.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Esper ID Codes Button & Modal */}
           <div className="form-section">
