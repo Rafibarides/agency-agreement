@@ -10,10 +10,13 @@ import {
   faUndo,
   faTimes,
   faBox,
-  faSpinner
+  faSpinner,
+  faTabletAlt
 } from '@fortawesome/free-solid-svg-icons';
 import Preview from './Preview';
+import DeviceInfoModal from './DeviceInfoModal';
 import { markDeviceProvisioned } from '../utils/api';
+import { isEsperConfigured } from '../utils/esperApi';
 
 const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
   const [selectedAgreement, setSelectedAgreement] = useState(null);
@@ -23,7 +26,10 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
   const [provisionedDevices, setProvisionedDevices] = useState({});
   const [provisioningRow, setProvisioningRow] = useState(null);
   const [returnModal, setReturnModal] = useState(null);
+  const [deviceInfoModal, setDeviceInfoModal] = useState(null);
   const itemsPerPage = 10;
+  
+  const esperConfigured = isEsperConfigured();
 
   const formatDate = (dateValue) => {
     if (!dateValue) return '';
@@ -330,6 +336,26 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
               </p>
             </div>
             <div className="return-modal-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
+              {/* Device Info from Esper */}
+              {esperConfigured && (returnModal['Esper Identifier Code'] || returnModal['Worker ID'] || returnModal['Serial Number'] || returnModal.Name) && (
+                <button 
+                  className="btn btn-esper"
+                  onClick={() => {
+                    setDeviceInfoModal(returnModal);
+                    setReturnModal(null);
+                  }}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  <FontAwesomeIcon icon={faTabletAlt} />
+                  <span>
+                    Device Info
+                    <small style={{ display: 'block', fontSize: '0.7rem', opacity: 0.8, fontWeight: 400 }}>
+                      View Esper device details & PointCare version
+                    </small>
+                  </span>
+                </button>
+              )}
+
               {/* Device Provisioned option - only for unsigned entries */}
               {isUnsigned(returnModal) && (
                 <button 
@@ -386,6 +412,14 @@ const List = ({ agreements, loading, searchQuery, onSearchChange }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Device Info Modal (Esper) */}
+      {deviceInfoModal && (
+        <DeviceInfoModal 
+          agreement={deviceInfoModal}
+          onClose={() => setDeviceInfoModal(null)}
+        />
       )}
     </>
   );

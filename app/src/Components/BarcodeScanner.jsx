@@ -4,9 +4,11 @@ import {
   faBarcode, 
   faSpinner,
   faCheck,
-  faTimes
+  faTimes,
+  faMagic
 } from '@fortawesome/free-solid-svg-icons';
 import { getAgreementByRowNumber } from '../utils/api';
+import { enhanceFormWithEsperData } from '../utils/esperHelpers';
 
 const BarcodeScanner = ({ onFormLoaded, disabled = false }) => {
   const [inputValue, setInputValue] = useState('');
@@ -75,7 +77,7 @@ const BarcodeScanner = ({ onFormLoaded, disabled = false }) => {
       if (result.success && result.agreement) {
         const agreement = result.agreement;
         
-        const formData = {
+        let formData = {
           name: agreement.Name || '',
           title: agreement.Title || '',
           workerId: agreement['Worker ID']?.toString() || '',
@@ -96,6 +98,18 @@ const BarcodeScanner = ({ onFormLoaded, disabled = false }) => {
           agreement3: agreement['Agreement 3'] || false,
           rowNumber: agreement.rowNumber
         };
+
+        // Try to enhance form with Esper data (non-blocking)
+        try {
+          const enhanceResult = await enhanceFormWithEsperData(formData);
+          if (enhanceResult.enhanced) {
+            formData = enhanceResult.data;
+            console.log('Form enhanced with Esper data:', enhanceResult.fieldsEnhanced);
+          }
+        } catch (esperError) {
+          // Esper enhancement failed - continue with original data
+          console.warn('Esper enhancement skipped:', esperError.message);
+        }
 
         setStatus({ type: 'success', message: formData.name });
         setInputValue('');

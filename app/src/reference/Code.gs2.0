@@ -509,6 +509,12 @@ function updateWithSignatures(data) {
     const sendCopyIndex = headers.indexOf('Send Copy to Employee');
     const emailIndex = headers.indexOf('Employee Email');
     
+    // Additional columns that may need updating (filled by IT after HR creates request)
+    const deviceNameIndex = headers.indexOf('Device Name');
+    const serialNumberIndex = headers.indexOf('Serial Number');
+    const esperIdentifierIndex = headers.indexOf('Esper Identifier Code');
+    const trainingWorkerIdIndex = headers.indexOf('Training Worker ID');
+    
     // Validate that required columns exist
     const requiredColumns = {
       'Name': nameIndex,
@@ -532,19 +538,42 @@ function updateWithSignatures(data) {
     // Find the matching unsigned row
     let matchingRow = -1;
     
-    for (let i = 1; i < allData.length; i++) {
-      const row = allData[i];
-      const empSig = row[empSigIndex];
-      const supSig = row[supSigIndex];
-      
-      // Check if row is unsigned
-      if ((!empSig || empSig.toString().trim() === '') && 
-          (!supSig || supSig.toString().trim() === '')) {
-        // Check if name and workerId match
-        if (row[nameIndex] === data.name && 
-            row[workerIdIndex].toString() === data.workerId.toString()) {
-          matchingRow = i + 1; // Sheet rows are 1-indexed
-          break;
+    // PRIORITY 1: If rowNumber is provided (from barcode scan), use it directly
+    if (data.rowNumber) {
+      const rowIndex = parseInt(data.rowNumber);
+      if (rowIndex >= 2 && rowIndex <= allData.length) {
+        const row = allData[rowIndex - 1];
+        const empSig = row[empSigIndex];
+        const supSig = row[supSigIndex];
+        
+        // Verify the row is unsigned
+        if ((!empSig || empSig.toString().trim() === '') && 
+            (!supSig || supSig.toString().trim() === '')) {
+          matchingRow = rowIndex;
+          Logger.log('Matched by rowNumber: ' + matchingRow);
+        } else {
+          Logger.log('Row ' + rowIndex + ' is already signed');
+        }
+      }
+    }
+    
+    // PRIORITY 2: Fall back to name + workerId matching (for non-barcode submissions)
+    if (matchingRow === -1) {
+      for (let i = 1; i < allData.length; i++) {
+        const row = allData[i];
+        const empSig = row[empSigIndex];
+        const supSig = row[supSigIndex];
+        
+        // Check if row is unsigned
+        if ((!empSig || empSig.toString().trim() === '') && 
+            (!supSig || supSig.toString().trim() === '')) {
+          // Check if name and workerId match
+          if (row[nameIndex] === data.name && 
+              row[workerIdIndex].toString() === data.workerId.toString()) {
+            matchingRow = i + 1; // Sheet rows are 1-indexed
+            Logger.log('Matched by name + workerId: ' + matchingRow);
+            break;
+          }
         }
       }
     }
@@ -562,12 +591,39 @@ function updateWithSignatures(data) {
     sheet.getRange(matchingRow, supSigDateIndex + 1).setValue(data.supervisorSignatureDate || new Date());
     sheet.getRange(matchingRow, supSigIndex + 1).setValue(data.supervisorSignature || '');
     
+    // Update Worker ID if provided (IT fills this in after HR creates request)
+    if (data.workerId && workerIdIndex !== -1) {
+      sheet.getRange(matchingRow, workerIdIndex + 1).setValue(data.workerId);
+    }
+    
+    // Update Training Worker ID if provided
+    if (data.trainingWorkerId && trainingWorkerIdIndex !== -1) {
+      sheet.getRange(matchingRow, trainingWorkerIdIndex + 1).setValue(data.trainingWorkerId);
+    }
+    
+    // Update device info if provided (IT fills these in)
+    if (data.deviceName && deviceNameIndex !== -1) {
+      sheet.getRange(matchingRow, deviceNameIndex + 1).setValue(data.deviceName);
+    }
+    if (data.serialNumber && serialNumberIndex !== -1) {
+      sheet.getRange(matchingRow, serialNumberIndex + 1).setValue(data.serialNumber);
+    }
+    if (data.esperIdentifier && esperIdentifierIndex !== -1) {
+      sheet.getRange(matchingRow, esperIdentifierIndex + 1).setValue(data.esperIdentifier);
+    }
+    
     // Only update email columns if they exist (they might be missing in older sheets)
     if (sendCopyIndex !== -1) {
       sheet.getRange(matchingRow, sendCopyIndex + 1).setValue(data.sendCopyToEmployee || false);
     }
     if (emailIndex !== -1) {
       sheet.getRange(matchingRow, emailIndex + 1).setValue(data.employeeEmail || '');
+    }
+    
+    // Clear the Provisioned flag once signed (device is picked up)
+    const provisionedIndex = headers.indexOf('Provisioned');
+    if (provisionedIndex !== -1) {
+      sheet.getRange(matchingRow, provisionedIndex + 1).setValue(false);
     }
     
     // Send emails after successful update

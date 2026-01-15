@@ -8,10 +8,13 @@ import {
   faSignOutAlt,
   faQrcode,
   faBox,
-  faSync
+  faSync,
+  faMagic
 } from '@fortawesome/free-solid-svg-icons';
 import BarcodeModal from '../Components/BarcodeModal';
 import { holdForSignature, getProvisionedDevices, TITLE_OPTIONS } from '../utils/api';
+import { searchEsperByName, extractWorkerIdFromTags, extractTitleFromTags } from '../utils/esperHelpers';
+import { isEsperConfigured } from '../utils/esperApi';
 import colors from '../utils/colors';
 
 const HRPage = ({ userEmail, onLogout }) => {
@@ -22,11 +25,15 @@ const HRPage = ({ userEmail, onLogout }) => {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
-  const [barcodeData, setBarcodeData] = useState({ rowNumber: null, name: '' });
+  const [barcodeData, setBarcodeData] = useState({ rowNumber: null, name: '', workerId: '' });
   
   // Provisioned devices state
   const [provisionedDevices, setProvisionedDevices] = useState([]);
   const [loadingProvisioned, setLoadingProvisioned] = useState(false);
+  
+  // Esper lookup state
+  const [esperLookupStatus, setEsperLookupStatus] = useState(''); // '', 'searching', 'found', 'not_found'
+  const esperConfigured = isEsperConfigured();
 
   // Fetch provisioned devices on mount
   useEffect(() => {
@@ -71,13 +78,55 @@ const HRPage = ({ userEmail, onLogout }) => {
     setSubmitting(true);
     setMessage({ type: '', text: '' });
 
+    // Initialize submit data
+    let workerId = '';
+    let esperIdentifier = '';
+    let serialNumber = '';
+    let esperEnhanced = false;
+
+    // Try to lookup additional info from Esper (non-blocking)
+    if (esperConfigured) {
+      setEsperLookupStatus('searching');
+      try {
+        const device = await searchEsperByName(formData.name.trim());
+        if (device) {
+          // Extract Worker ID from tags
+          const foundWorkerId = extractWorkerIdFromTags(device.tags);
+          if (foundWorkerId) {
+            workerId = foundWorkerId;
+            esperEnhanced = true;
+          }
+          
+          // Extract Esper identifier from device name (ESR-NNV-XXXXX)
+          const deviceNameMatch = device.device_name?.match(/ESR-NNV-([A-Z0-9]{5})$/i);
+          if (deviceNameMatch) {
+            esperIdentifier = deviceNameMatch[1].toUpperCase();
+            esperEnhanced = true;
+          }
+          
+          // Extract serial number from device info
+          if (device.hardwareInfo?.serialNumber) {
+            serialNumber = device.hardwareInfo.serialNumber;
+            esperEnhanced = true;
+          }
+          
+          setEsperLookupStatus('found');
+          console.log('HR form enhanced with Esper data:', { workerId, esperIdentifier, serialNumber });
+        } else {
+          setEsperLookupStatus('not_found');
+        }
+      } catch (esperError) {
+        console.warn('Esper lookup failed:', esperError.message);
+        setEsperLookupStatus('');
+      }
+    }
+
     try {
-      // Create a minimal form data object for holding
-      // The IT team will complete the rest when they scan the barcode
+      // Create form data object with any Esper-enhanced fields
       const submitData = {
         name: formData.name.trim(),
         title: formData.title,
-        workerId: '', // Will be filled by IT
+        workerId: workerId, // May be filled from Esper or empty for IT to fill
         hasDifferentTrainingId: false,
         trainingWorkerId: '',
         device: true, // Default to device request
@@ -85,8 +134,8 @@ const HRPage = ({ userEmail, onLogout }) => {
         portableCharger: false,
         protectiveCover: false,
         keyboard: false,
-        serialNumber: '',
-        esperIdentifier: '',
+        serialNumber: serialNumber,
+        esperIdentifier: esperIdentifier,
         exchangeDevice: false,
         returningDeviceName: '',
         returningSerial: '',
@@ -103,13 +152,17 @@ const HRPage = ({ userEmail, onLogout }) => {
       if (result.success && result.rowNumber) {
         setBarcodeData({
           rowNumber: result.rowNumber,
-          name: formData.name.trim()
+          name: formData.name.trim(),
+          workerId: workerId || '(Pending)'
         });
         setShowBarcodeModal(true);
-        setMessage({ type: 'success', text: 'Device request created!' });
+        
+        const enhancedMsg = esperEnhanced ? ' (Enhanced with Esper data)' : '';
+        setMessage({ type: 'success', text: `Device request created!${enhancedMsg}` });
         
         // Reset form
         setFormData({ name: '', title: '' });
+        setEsperLookupStatus('');
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to create request' });
       }
@@ -117,6 +170,7 @@ const HRPage = ({ userEmail, onLogout }) => {
       setMessage({ type: 'error', text: 'Network error. Please try again.' });
     } finally {
       setSubmitting(false);
+      setEsperLookupStatus('');
     }
   };
 
@@ -231,10 +285,17 @@ const HRPage = ({ userEmail, onLogout }) => {
               style={{ minWidth: '220px' }}
             >
               {submitting ? (
-                <>
-                  <FontAwesomeIcon icon={faSpinner} spin />
-                  Creating Request...
-                </>
+                esperLookupStatus === 'searching' ? (
+                  <>
+                    <FontAwesomeIcon icon={faMagic} spin />
+                    Checking Esper...
+                  </>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faSpinner} spin />
+                    Creating Request...
+                  </>
+                )
               ) : (
                 <>
                   <FontAwesomeIcon icon={faUserPlus} />
@@ -242,6 +303,20 @@ const HRPage = ({ userEmail, onLogout }) => {
                 </>
               )}
             </button>
+            {esperConfigured && (
+              <p style={{ 
+                fontSize: '0.75rem', 
+                color: colors.textMuted, 
+                marginTop: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.35rem'
+              }}>
+                <FontAwesomeIcon icon={faMagic} style={{ color: colors.accentPink }} />
+                Auto-fills Worker ID from Esper if available
+              </p>
+            )}
           </div>
         </form>
         </div>
@@ -387,7 +462,7 @@ const HRPage = ({ userEmail, onLogout }) => {
         onClose={() => setShowBarcodeModal(false)}
         rowNumber={barcodeData.rowNumber}
         name={barcodeData.name}
-        workerId="(Pending)"
+        workerId={barcodeData.workerId || '(Pending)'}
         requestedBy={userEmail}
       />
     </div>

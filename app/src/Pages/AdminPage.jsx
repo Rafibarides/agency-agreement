@@ -9,6 +9,7 @@ import {
   faShieldAlt
 } from '@fortawesome/free-solid-svg-icons';
 import List from '../Components/List';
+import MultiDeviceReport from '../Components/MultiDeviceReport';
 import { adminLogin, getAllAgreements, searchAgreements } from '../utils/api';
 import colors from '../utils/colors';
 
@@ -208,10 +209,13 @@ const AdminPage = () => {
             View and manage all submitted property agreements
           </p>
         </div>
-        <button className="btn btn-secondary" onClick={handleLogout}>
-          <FontAwesomeIcon icon={faSignOutAlt} />
-          Sign Out
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <MultiDeviceReport />
+          <button className="btn btn-secondary" onClick={handleLogout}>
+            <FontAwesomeIcon icon={faSignOutAlt} />
+            Sign Out
+          </button>
+        </div>
       </div>
 
       <List 

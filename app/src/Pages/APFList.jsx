@@ -7,9 +7,11 @@ import {
   faIdCard,
   faArrowRight,
   faSearch,
-  faExclamationTriangle
+  faExclamationTriangle,
+  faMagic
 } from '@fortawesome/free-solid-svg-icons';
 import { getUnsignedAgreements } from '../utils/api';
+import { enhanceFormWithEsperData } from '../utils/esperHelpers';
 import colors from '../utils/colors';
 
 const APFList = ({ onSelectAgreement }) => {
@@ -17,6 +19,7 @@ const APFList = ({ onSelectAgreement }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectingRow, setSelectingRow] = useState(null); // Track which row is being processed
 
   useEffect(() => {
     fetchUnsignedAgreements();
@@ -49,9 +52,11 @@ const APFList = ({ onSelectAgreement }) => {
     );
   });
 
-  const handleSelect = (agreement) => {
+  const handleSelect = async (agreement) => {
+    setSelectingRow(agreement.rowNumber);
+    
     // Convert spreadsheet data to form data format
-    const formData = {
+    let formData = {
       name: agreement.Name || '',
       title: agreement.Title || '',
       workerId: agreement['Worker ID']?.toString() || '',
@@ -73,6 +78,19 @@ const APFList = ({ onSelectAgreement }) => {
       rowNumber: agreement.rowNumber
     };
     
+    // Try to enhance form with Esper data (non-blocking)
+    try {
+      const enhanceResult = await enhanceFormWithEsperData(formData);
+      if (enhanceResult.enhanced) {
+        formData = enhanceResult.data;
+        console.log('APF form enhanced with Esper data:', enhanceResult.fieldsEnhanced);
+      }
+    } catch (esperError) {
+      // Esper enhancement failed - continue with original data
+      console.warn('Esper enhancement skipped:', esperError.message);
+    }
+    
+    setSelectingRow(null);
     onSelectAgreement(formData);
   };
 
@@ -178,71 +196,88 @@ const APFList = ({ onSelectAgreement }) => {
         {/* Agreements List */}
         {!loading && !error && filteredAgreements.length > 0 && (
           <div className="apf-list">
-            {filteredAgreements.map((agreement, index) => (
-              <div 
-                key={agreement.rowNumber || index}
-                className="apf-item glass-subtle"
-                onClick={() => handleSelect(agreement)}
-                style={{
-                  padding: '1rem 1.25rem',
-                  marginBottom: '0.75rem',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  transition: 'all 0.2s ease',
-                  border: `1px solid ${colors.glassBorder}`
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '0.75rem',
-                    marginBottom: '0.5rem'
-                  }}>
-                    <FontAwesomeIcon 
-                      icon={faUser} 
-                      style={{ color: colors.accentPink }} 
-                    />
-                    <span style={{ 
-                      fontWeight: '600', 
-                      color: colors.textPrimary,
-                      fontSize: '1.05rem'
+            {filteredAgreements.map((agreement, index) => {
+              const isSelecting = selectingRow === agreement.rowNumber;
+              return (
+                <div 
+                  key={agreement.rowNumber || index}
+                  className="apf-item glass-subtle"
+                  onClick={() => !isSelecting && handleSelect(agreement)}
+                  style={{
+                    padding: '1rem 1.25rem',
+                    marginBottom: '0.75rem',
+                    borderRadius: '8px',
+                    cursor: isSelecting ? 'wait' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    transition: 'all 0.2s ease',
+                    border: `1px solid ${colors.glassBorder}`,
+                    opacity: isSelecting ? 0.7 : 1
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.75rem',
+                      marginBottom: '0.5rem'
                     }}>
-                      {agreement.Name || 'Unknown'}
-                    </span>
-                  </div>
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '1.5rem',
-                    fontSize: '0.9rem',
-                    color: colors.textSecondary
-                  }}>
-                    <span>
                       <FontAwesomeIcon 
-                        icon={faIdCard} 
-                        style={{ marginRight: '0.5rem' }} 
+                        icon={faUser} 
+                        style={{ color: colors.accentPink }} 
                       />
-                      ID: {agreement['Worker ID'] || 'N/A'}
-                    </span>
-                    <span>{agreement.Title || 'N/A'}</span>
-                    <span style={{ color: colors.textMuted }}>
-                      {formatDate(agreement.Timestamp)}
-                    </span>
+                      <span style={{ 
+                        fontWeight: '600', 
+                        color: colors.textPrimary,
+                        fontSize: '1.05rem'
+                      }}>
+                        {agreement.Name || 'Unknown'}
+                      </span>
+                      {isSelecting && (
+                        <span style={{ 
+                          fontSize: '0.75rem', 
+                          color: colors.accentPink,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem'
+                        }}>
+                          <FontAwesomeIcon icon={faMagic} />
+                          Enhancing...
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '1.5rem',
+                      fontSize: '0.9rem',
+                      color: colors.textSecondary
+                    }}>
+                      <span>
+                        <FontAwesomeIcon 
+                          icon={faIdCard} 
+                          style={{ marginRight: '0.5rem' }} 
+                        />
+                        ID: {agreement['Worker ID'] || 'N/A'}
+                      </span>
+                      <span>{agreement.Title || 'N/A'}</span>
+                      <span style={{ color: colors.textMuted }}>
+                        {formatDate(agreement.Timestamp)}
+                      </span>
+                    </div>
                   </div>
+                  <FontAwesomeIcon 
+                    icon={isSelecting ? faSpinner : faArrowRight} 
+                    spin={isSelecting}
+                    style={{ 
+                      color: colors.accentPink,
+                      fontSize: '1.25rem'
+                    }} 
+                  />
                 </div>
-                <FontAwesomeIcon 
-                  icon={faArrowRight} 
-                  style={{ 
-                    color: colors.accentPink,
-                    fontSize: '1.25rem'
-                  }} 
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
