@@ -12,6 +12,9 @@ import {
 import List from '../Components/List';
 import MultiDeviceReport from '../Components/MultiDeviceReport';
 import CellularDeviceReport from '../Components/CellularDeviceReport';
+import ChromeConfigManager from '../Components/ChromeConfigManager';
+import AppStateManager from '../Components/AppStateManager';
+import PhoneNumberReport from '../Components/PhoneNumberReport';
 import { adminLogin, getAllAgreements, searchAgreements } from '../utils/api';
 import colors from '../utils/colors';
 
@@ -216,6 +219,9 @@ const AdminPage = ({ onOpenRetrieval }) => {
             <FontAwesomeIcon icon={faBoxOpen} />
             Retrieval Program
           </button>
+          <ChromeConfigManager />
+          <AppStateManager />
+          <PhoneNumberReport />
           <CellularDeviceReport />
           <MultiDeviceReport />
           <button className="btn btn-secondary" onClick={handleLogout}>

@@ -8,7 +8,7 @@ const CONFIG = {
   ADMIN_PASSWORD: 'wellbound!',
   SHEET_NAME: 'Agreements',
   COMPANY_INFO: {
-    name: 'AMBER COURT AT HOME D/B/A WELLBOUND',
+    name: 'WELLBOUND',
     address: '7424 13th Avenue',
     city: 'Brooklyn, NY 11228',
     phone: 'Tel: 718-530-9880'

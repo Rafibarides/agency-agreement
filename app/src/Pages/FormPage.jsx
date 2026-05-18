@@ -144,8 +144,7 @@ const FormPage = ({ prefillData, onReset }) => {
     const holdError = validateFormForHold();
     if (holdError) return holdError;
     
-    if (!formData.employeeSignature) return 'Employee signature is required';
-    if (!formData.supervisorSignature) return 'Supervisor signature is required';
+    
     if (formData.sendCopyToEmployee && !formData.employeeEmail.trim()) {
       return 'Please enter your email address to receive a copy';
     }

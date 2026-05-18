@@ -61,6 +61,13 @@ const Dashboard = () => {
     setStaleLoading(true);
     try {
       const result = await getStaleDevices(5); // 5 months
+      console.log('Stale devices result:', {
+        totalDevices: result.totalDevices,
+        devicesWithActivityData: result.devicesWithActivityData,
+        devicesWithoutActivityData: result.devicesWithoutActivityData,
+        staleCount: result.staleCount,
+        cutoffDate: result.cutoffDate
+      });
       setStaleDevicesData(result);
     } catch (err) {
       console.error('Failed to fetch stale devices:', err);

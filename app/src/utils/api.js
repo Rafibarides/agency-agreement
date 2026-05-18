@@ -143,9 +143,14 @@ export async function addRetrievalNote(caseId, note) {
   return apiRequest('addRetrievalNote', { caseId, note });
 }
 
+// Set scheduled dropoff date for Stage 5
+export async function setScheduledDropoffDate(caseId, dropoffDate) {
+  return apiRequest('setScheduledDropoffDate', { caseId, dropoffDate });
+}
+
 // Company information
 export const COMPANY_INFO = {
-  name: 'AMBER COURT AT HOME D/B/A WELLBOUND',
+  name: 'WELLBOUND',
   address: '7424 13th Avenue',
   city: 'Brooklyn, NY 11228',
   phone: 'Tel: 718-530-9880'
@@ -211,6 +216,7 @@ export default {
   updateRetrievalCallStatus,
   deleteRetrievalCase,
   addRetrievalNote,
+  setScheduledDropoffDate,
   // Constants
   COMPANY_INFO,
   TITLE_OPTIONS,

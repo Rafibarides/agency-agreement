@@ -17,7 +17,8 @@ import {
   faTimes,
   faArrowLeft,
   faMobileAlt,
-  faBoxOpen
+  faBoxOpen,
+  faFileCsv
 } from '@fortawesome/free-solid-svg-icons';
 import { getDueForReturnDevices } from '../utils/api';
 import { 
@@ -52,8 +53,19 @@ const CoordinatorPage = ({ userEmail, onLogout, onOpenRetrieval }) => {
   const [practiceSearch, setPracticeSearch] = useState('');
   const [loadingPointCare, setLoadingPointCare] = useState(false);
   const [pointCareData, setPointCareData] = useState({});
+  const [selectedDisciplines, setSelectedDisciplines] = useState([]);
+  const [exportLoading, setExportLoading] = useState(false);
   
   const esperConfigured = isEsperConfigured();
+  const DISCIPLINES = [
+    { abbrev: 'RN', name: 'Registered Nurse' },
+    { abbrev: 'LPN', name: 'Licensed Practical Nurse' },
+    { abbrev: 'PT', name: 'Physical Therapist' },
+    { abbrev: 'PTA', name: 'Physical Therapist Assistant' },
+    { abbrev: 'OT', name: 'Occupational Therapist' },
+    { abbrev: 'COTA', name: 'Certified Occupational Therapy Assistant' },
+    { abbrev: 'ST', name: 'Speech Therapist' }
+  ];
 
   useEffect(() => {
     fetchDueForReturn();
@@ -139,6 +151,60 @@ const CoordinatorPage = ({ userEmail, onLogout, onOpenRetrieval }) => {
       day: 'numeric',
       year: 'numeric'
     });
+  };
+
+  const toggleDiscipline = (abbrev) => {
+    setSelectedDisciplines((prev) => {
+      if (prev.includes(abbrev)) {
+        return prev.filter((item) => item !== abbrev);
+      }
+      return [...prev, abbrev];
+    });
+  };
+
+  const buildCsv = (rows) => {
+    const headers = ['Username', 'Equipment model'];
+    const escapeValue = (value) => {
+      const stringValue = value == null ? '' : String(value);
+      if (/[",\n]/.test(stringValue)) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
+    const lines = [
+      headers.map(escapeValue).join(','),
+      ...rows.map((row) => headers.map((header) => escapeValue(row[header])).join(','))
+    ];
+    return lines.join('\n');
+  };
+
+  const handleExportCsv = async () => {
+    if (!esperConfigured || selectedDisciplines.length === 0) return;
+    setExportLoading(true);
+    try {
+      const report = await getDevicesByPractice();
+      const selectedSet = new Set(selectedDisciplines);
+      const selectedPractices = report.practices.filter((practice) => selectedSet.has(practice.abbrev));
+      const devices = selectedPractices.flatMap((practice) => practice.devices);
+      const rows = devices.map((device) => ({
+        'Username': device.assignedTo || device.workerId || 'Unassigned',
+        'Equipment model': device.model || device.aliasName || device.deviceName || '-'
+      }));
+
+      const csvContent = buildCsv(rows);
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const timestamp = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `discipline-device-export-${timestamp}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export CSV:', err);
+    } finally {
+      setExportLoading(false);
+    }
   };
 
   const filteredPracticeDevices = selectedPractice?.devices.filter(device => {
@@ -498,6 +564,72 @@ const CoordinatorPage = ({ userEmail, onLogout, onOpenRetrieval }) => {
             <p style={{ color: colors.textMuted, textAlign: 'center' }}>Unable to load</p>
           )}
         </div>
+      </div>
+
+      {/* Report Export Section */}
+      <div className="form-section" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          marginBottom: '1rem',
+          flexWrap: 'wrap',
+          gap: '0.75rem'
+        }}>
+          <h2 className="form-section-title" style={{ margin: 0, color: '#4DD0E1' }}>
+            <FontAwesomeIcon icon={faFileCsv} />
+            Report Export (Esper)
+          </h2>
+          <button 
+            className="btn btn-secondary btn-small"
+            onClick={handleExportCsv}
+            disabled={!esperConfigured || selectedDisciplines.length === 0 || exportLoading}
+          >
+            <FontAwesomeIcon icon={faFileCsv} spin={exportLoading} />
+            Export CSV
+          </button>
+        </div>
+
+        {!esperConfigured ? (
+          <p style={{ color: colors.textMuted, margin: 0 }}>
+            Esper is not configured. Add your Esper API credentials to enable exports.
+          </p>
+        ) : (
+          <>
+            <p style={{ marginTop: 0, color: colors.textMuted, fontSize: '0.85rem' }}>
+              Select one or more disciplines to export all clinicians with devices in Esper.
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+              {DISCIPLINES.map((discipline) => (
+                <label
+                  key={discipline.abbrev}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.4rem 0.7rem',
+                    border: '1px solid rgba(77, 208, 225, 0.3)',
+                    borderRadius: '8px',
+                    background: selectedDisciplines.includes(discipline.abbrev)
+                      ? 'rgba(77, 208, 225, 0.12)'
+                      : 'transparent',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedDisciplines.includes(discipline.abbrev)}
+                    onChange={() => toggleDiscipline(discipline.abbrev)}
+                  />
+                  <span style={{ fontWeight: 600 }}>{discipline.abbrev}</span>
+                  <span style={{ fontSize: '0.75rem', color: colors.textMuted }}>
+                    {discipline.name}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Devices by Practice Section */}

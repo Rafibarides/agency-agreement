@@ -145,7 +145,7 @@ const Preview = ({ agreement, onClose }) => {
             </div>
 
             {/* Signatures - Side by Side to fit on one page */}
-            <div style={{ display: 'flex', gap: '2rem', marginTop: '1.5rem' }}>
+            <div className="pdf-signatures" style={{ display: 'flex', gap: '2rem', marginTop: '1.5rem' }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, color: '#000', marginBottom: '0.25rem' }}>Employee Signature</div>
                 <div style={{ borderBottom: '1px solid #333', minHeight: '50px', marginBottom: '0.25rem' }}>
@@ -167,7 +167,7 @@ const Preview = ({ agreement, onClose }) => {
             </div>
 
             {/* Footer */}
-            <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '0.75rem', color: '#666' }}>
+            <div className="pdf-footer" style={{ marginTop: '1rem', textAlign: 'center', fontSize: '0.75rem', color: '#666' }}>
               Generated on {formatDate(new Date())}
             </div>
           </div>

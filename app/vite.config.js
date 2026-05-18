@@ -1,23 +1,16 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
-  const esperTenant = env.VITE_ESPER_TENANT || 'ricct'
-  
-  return {
-    plugins: [react()],
-    base: '/agency-agreement/',
-    server: {
-      proxy: {
-        '/esper-api': {
-          target: `https://${esperTenant}-api.esper.cloud`,
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/esper-api/, '/api'),
-          secure: true,
-        },
-      },
-    },
-  }
+//
+// Note: this app no longer needs a dev proxy for Esper. The frontend talks
+// directly to the `worker-esper` Cloudflare Worker in both dev and prod
+// (the worker's CORS allow-list includes http://localhost:5173). The worker
+// holds the Esper API key as a server-side secret.
+//
+// `base: '/'` because this app is served from the root of
+// agency-agreement.wellboundcarestream.com (not from a GitHub Pages subpath).
+export default defineConfig({
+  plugins: [react()],
+  base: '/',
 })

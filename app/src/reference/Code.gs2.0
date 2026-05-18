@@ -8,6 +8,7 @@ const CONFIG = {
   ADMIN_PASSWORD: 'wellbound!',
   SHEET_NAME: 'Agreements',
   RETRIEVAL_SHEET_NAME: 'Retrievals',
+  CONTACT_SHEET_NAME: 'Contact',
   APF_PIN: '1234', // PIN for Hold for Signature and APF access
   // Retrieval Program Stages
   RETRIEVAL_STAGES: {
@@ -21,7 +22,7 @@ const CONFIG = {
     8: 'Remotely Offboarded'
   },
   COMPANY_INFO: {
-    name: 'AMBER COURT AT HOME D/B/A WELLBOUND',
+    name: 'WELLBOUND',
     address: '7424 13th Avenue',
     city: 'Brooklyn, NY 11228',
     phone: 'Tel: 718-530-9880'
@@ -141,6 +142,10 @@ function doPost(e) {
       
       case 'addRetrievalNote':
         return ContentService.createTextOutput(JSON.stringify(addRetrievalNote(data.caseId, data.note)))
+          .setMimeType(ContentService.MimeType.JSON);
+      
+      case 'setScheduledDropoffDate':
+        return ContentService.createTextOutput(JSON.stringify(setScheduledDropoffDate(data.caseId, data.dropoffDate)))
           .setMimeType(ContentService.MimeType.JSON);
       
       default:
@@ -960,6 +965,7 @@ function initializeRetrievalSheet() {
     'Notes',            // JSON array of notes with timestamps
     'AssignedTo',       // Coordinator handling this case
     'ResolvedDate',     // Date when moved to stage 7 or 8
+    'ScheduledDropoffDate', // For Stage 5: scheduled dropoff date
     'IsDeleted'         // Soft delete flag
   ];
   
@@ -1031,6 +1037,7 @@ function createRetrievalCase(data) {
       initialNotes,                     // Notes
       data.assignedTo || '',            // AssignedTo
       '',                               // ResolvedDate
+      '',                               // ScheduledDropoffDate
       false                             // IsDeleted
     ];
     
@@ -1049,6 +1056,117 @@ function createRetrievalCase(data) {
       error: error.message
     };
   }
+}
+
+/**
+ * Get all contacts from Contact sheet as a lookup map
+ * Returns map keyed by Worker ID for fast lookup
+ */
+function getContactsMap() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.CONTACT_SHEET_NAME);
+  
+  if (!sheet) {
+    return {};
+  }
+  
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) {
+    return {};
+  }
+  
+  const headers = data[0];
+  const contactsMap = {};
+  
+  // Find column indices
+  const lastNameIdx = headers.indexOf('Last Name');
+  const firstNameIdx = headers.indexOf('First Name');
+  const workerIdIdx = headers.indexOf('Worker ID');
+  const titleIdx = headers.indexOf('Title');
+  const workPhoneIdx = headers.indexOf('Work Phone');
+  const homePhoneIdx = headers.indexOf('Home Phone');
+  const cellPhoneIdx = headers.indexOf('Cell Phone');
+  
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const workerId = row[workerIdIdx]?.toString().trim();
+    
+    if (!workerId) continue;
+    
+    // Collect all available phone numbers
+    const phones = [];
+    
+    if (cellPhoneIdx !== -1 && row[cellPhoneIdx]) {
+      phones.push({ type: 'Cell', number: formatPhoneNumber(row[cellPhoneIdx]) });
+    }
+    if (workPhoneIdx !== -1 && row[workPhoneIdx]) {
+      phones.push({ type: 'Work', number: formatPhoneNumber(row[workPhoneIdx]) });
+    }
+    if (homePhoneIdx !== -1 && row[homePhoneIdx]) {
+      phones.push({ type: 'Home', number: formatPhoneNumber(row[homePhoneIdx]) });
+    }
+    
+    const fullName = [
+      row[firstNameIdx]?.toString().trim() || '',
+      row[lastNameIdx]?.toString().trim() || ''
+    ].filter(Boolean).join(' ');
+    
+    contactsMap[workerId] = {
+      workerId: workerId,
+      fullName: fullName,
+      firstName: row[firstNameIdx]?.toString().trim() || '',
+      lastName: row[lastNameIdx]?.toString().trim() || '',
+      title: row[titleIdx]?.toString().trim() || '',
+      phones: phones,
+      // Primary phone (prefer cell, then work, then home)
+      primaryPhone: phones.length > 0 ? phones[0].number : null
+    };
+  }
+  
+  return contactsMap;
+}
+
+/**
+ * Format phone number for display
+ */
+function formatPhoneNumber(phone) {
+  if (!phone) return null;
+  
+  // Convert to string and remove non-digits
+  const digits = phone.toString().replace(/\D/g, '');
+  
+  // Format as (XXX) XXX-XXXX if 10 digits
+  if (digits.length === 10) {
+    return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+  }
+  
+  // Return as-is if not 10 digits
+  return phone.toString();
+}
+
+/**
+ * Look up contact info by Worker ID or name
+ */
+function lookupContact(workerId, staffName, contactsMap) {
+  // Try Worker ID first (most reliable)
+  if (workerId && contactsMap[workerId.toString()]) {
+    return contactsMap[workerId.toString()];
+  }
+  
+  // Try matching by name if Worker ID not found
+  if (staffName) {
+    const searchName = staffName.toLowerCase().trim();
+    for (const contact of Object.values(contactsMap)) {
+      const contactFullName = contact.fullName.toLowerCase();
+      if (contactFullName === searchName || 
+          contactFullName.includes(searchName) || 
+          searchName.includes(contactFullName)) {
+        return contact;
+      }
+    }
+  }
+  
+  return null;
 }
 
 /**
@@ -1072,6 +1190,9 @@ function getRetrievalCases() {
       };
     }
     
+    // Load contacts for phone number lookup
+    const contactsMap = getContactsMap();
+    
     const data = sheet.getDataRange().getValues();
     
     // Debug info
@@ -1080,7 +1201,8 @@ function getRetrievalCases() {
       totalRows: data.length,
       headers: data.length > 0 ? data[0] : [],
       lastRow: sheet.getLastRow(),
-      lastColumn: sheet.getLastColumn()
+      lastColumn: sheet.getLastColumn(),
+      contactsLoaded: Object.keys(contactsMap).length
     };
     
     if (data.length <= 1) {
@@ -1096,6 +1218,8 @@ function getRetrievalCases() {
     
     // Find column indices
     const isDeletedIndex = headers.indexOf('IsDeleted');
+    const workerIdIndex = headers.indexOf('WorkerID');
+    const staffNameIndex = headers.indexOf('StaffName');
     
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
@@ -1125,6 +1249,22 @@ function getRetrievalCases() {
       });
       
       caseObj.rowNumber = i + 1;
+      
+      // Look up contact info
+      const workerId = workerIdIndex !== -1 ? row[workerIdIndex] : null;
+      const staffName = staffNameIndex !== -1 ? row[staffNameIndex] : null;
+      const contact = lookupContact(workerId, staffName, contactsMap);
+      
+      if (contact) {
+        caseObj.phones = contact.phones;
+        caseObj.primaryPhone = contact.primaryPhone;
+        caseObj.contactFound = true;
+      } else {
+        caseObj.phones = [];
+        caseObj.primaryPhone = null;
+        caseObj.contactFound = false;
+      }
+      
       cases.push(caseObj);
     }
     
@@ -1403,6 +1543,88 @@ function addRetrievalNote(caseId, noteText) {
     };
   } catch(error) {
     Logger.log('addRetrievalNote error: ' + error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Set the scheduled dropoff date for a retrieval case (Stage 5)
+ */
+function setScheduledDropoffDate(caseId, dropoffDate) {
+  try {
+    const sheet = initializeRetrievalSheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+
+    const caseIdIndex = headers.indexOf('CaseID');
+    const scheduledDropoffIndex = headers.indexOf('ScheduledDropoffDate');
+    const notesIndex = headers.indexOf('Notes');
+    const lastUpdatedIndex = headers.indexOf('LastUpdated');
+
+    // Check if column exists, if not we need to add it
+    if (scheduledDropoffIndex === -1) {
+      // Add the column header
+      const newColIndex = headers.length;
+      sheet.getRange(1, newColIndex + 1).setValue('ScheduledDropoffDate');
+      // Re-read data
+      return setScheduledDropoffDate(caseId, dropoffDate); // Retry with new column
+    }
+
+    // Find the row
+    let targetRow = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][caseIdIndex] === caseId) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+
+    if (targetRow === -1) {
+      return { success: false, error: 'Case not found' };
+    }
+
+    const now = new Date();
+    
+    // Parse the dropoff date
+    const parsedDate = new Date(dropoffDate);
+    const formattedDate = parsedDate.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+
+    // Set the scheduled dropoff date
+    sheet.getRange(targetRow, scheduledDropoffIndex + 1).setValue(parsedDate);
+    sheet.getRange(targetRow, lastUpdatedIndex + 1).setValue(now);
+
+    // Add note about scheduled dropoff
+    let existingNotes = [];
+    try {
+      existingNotes = JSON.parse(data[targetRow - 1][notesIndex] || '[]');
+    } catch(e) {
+      existingNotes = [];
+    }
+
+    existingNotes.push({
+      timestamp: now.toISOString(),
+      text: `Dropoff scheduled for ${formattedDate}`,
+      type: 'scheduled_dropoff'
+    });
+
+    sheet.getRange(targetRow, notesIndex + 1).setValue(JSON.stringify(existingNotes));
+
+    return {
+      success: true,
+      message: 'Scheduled dropoff date set successfully',
+      scheduledDropoffDate: parsedDate.toISOString(),
+      formattedDate: formattedDate
+    };
+  } catch(error) {
+    Logger.log('setScheduledDropoffDate error: ' + error.message);
     return {
       success: false,
       error: error.message

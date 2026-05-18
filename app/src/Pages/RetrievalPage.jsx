@@ -17,7 +17,8 @@ import {
   faEllipsisV,
   faTabletAlt,
   faUser,
-  faIdCard
+  faIdCard,
+  faCalendarAlt
 } from '@fortawesome/free-solid-svg-icons';
 import {
   RETRIEVAL_STAGES,
@@ -25,7 +26,8 @@ import {
   updateRetrievalStage,
   updateRetrievalCallStatus,
   deleteRetrievalCase,
-  addRetrievalNote
+  addRetrievalNote,
+  setScheduledDropoffDate
 } from '../utils/api';
 import AddRetrievalModal from '../Components/AddRetrievalModal';
 
@@ -38,6 +40,8 @@ const RetrievalPage = ({ onBack }) => {
   const [draggedItem, setDraggedItem] = useState(null);
   const [noteModal, setNoteModal] = useState(null);
   const [noteText, setNoteText] = useState('');
+  const [datePickerModal, setDatePickerModal] = useState(null);
+  const [selectedDate, setSelectedDate] = useState('');
   const contextMenuRef = useRef(null);
 
   useEffect(() => {
@@ -288,6 +292,41 @@ const RetrievalPage = ({ onBack }) => {
     setNoteText('');
   };
 
+  // Open date picker for scheduled dropoff (Stage 5)
+  const handleSetDropoffDate = () => {
+    if (!contextMenu?.caseItem) return;
+    setDatePickerModal(contextMenu.caseItem);
+    // Default to tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setSelectedDate(tomorrow.toISOString().split('T')[0]);
+    setContextMenu(null);
+  };
+
+  // Submit the scheduled dropoff date
+  const submitDropoffDate = async () => {
+    if (!datePickerModal || !selectedDate) return;
+
+    try {
+      const result = await setScheduledDropoffDate(datePickerModal.CaseID, selectedDate);
+      if (result.success) {
+        // Update local state with the new date
+        setCases(prev => prev.map(c =>
+          c.CaseID === datePickerModal.CaseID
+            ? { ...c, ScheduledDropoffDate: result.scheduledDropoffDate }
+            : c
+        ));
+      } else {
+        alert('Failed to set dropoff date: ' + result.error);
+      }
+    } catch (err) {
+      alert('Error setting dropoff date: ' + err.message);
+    }
+
+    setDatePickerModal(null);
+    setSelectedDate('');
+  };
+
   // Format date for display
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -295,10 +334,25 @@ const RetrievalPage = ({ onBack }) => {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  // Render a case card
+  // Format scheduled dropoff date for display
+  const formatDropoffDate = (dateStr) => {
+    if (!dateStr) return null;
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'short',
+      month: 'short', 
+      day: 'numeric' 
+    });
+  };
+
+// Render a case card
   const renderCaseCard = (caseItem) => {
     const isStage3 = parseInt(caseItem.Stage) === 3;
+    const isStage5 = parseInt(caseItem.Stage) === 5;
     const callStatus = caseItem.CallStatus;
+    const phones = caseItem.phones || [];
+    const hasPhones = phones.length > 0;
+    const scheduledDate = formatDropoffDate(caseItem.ScheduledDropoffDate);
 
     return (
       <div
@@ -313,7 +367,7 @@ const RetrievalPage = ({ onBack }) => {
           <FontAwesomeIcon icon={faGripVertical} className="drag-handle" />
           <span className="card-name">{caseItem.StaffName || 'Unknown'}</span>
         </div>
-        
+
         <div className="kanban-card-body">
           <div className="card-detail">
             <FontAwesomeIcon icon={faTabletAlt} />
@@ -331,10 +385,37 @@ const RetrievalPage = ({ onBack }) => {
           )}
         </div>
 
+        {/* Phone Numbers */}
+        {hasPhones && (
+          <div className="card-phones">
+            {phones.map((phone, idx) => (
+              <a
+                key={idx}
+                href={`tel:${phone.number.replace(/\D/g, '')}`}
+                className="phone-link"
+                onClick={(e) => e.stopPropagation()}
+                title={`${phone.type}: ${phone.number}`}
+              >
+                <FontAwesomeIcon icon={faPhone} />
+                <span>{phone.number}</span>
+                {phones.length > 1 && <span className="phone-type">{phone.type}</span>}
+              </a>
+            ))}
+          </div>
+        )}
+
         {isStage3 && (
           <div className={`call-status-badge ${callStatus === 'did_not_answer' ? 'dna' : 'success'}`}>
             <FontAwesomeIcon icon={callStatus === 'did_not_answer' ? faPhoneSlash : faPhone} />
             {callStatus === 'did_not_answer' ? 'No Answer' : 'Called'}
+          </div>
+        )}
+
+        {/* Scheduled Dropoff Date for Stage 5 */}
+        {isStage5 && scheduledDate && (
+          <div className="scheduled-dropoff-badge">
+            <FontAwesomeIcon icon={faCalendarAlt} />
+            {scheduledDate}
           </div>
         )}
 
@@ -470,6 +551,17 @@ const RetrievalPage = ({ onBack }) => {
             </>
           )}
 
+          {/* Stage 5 specific options */}
+          {parseInt(contextMenu.caseItem.Stage) === 5 && (
+            <>
+              <button onClick={handleSetDropoffDate}>
+                <FontAwesomeIcon icon={faCalendarAlt} />
+                Set Dropoff Date
+              </button>
+              <div className="context-menu-divider" />
+            </>
+          )}
+
           {/* Move to stage options */}
           <div className="context-submenu">
             <span className="submenu-label">Move to Stage:</span>
@@ -515,7 +607,7 @@ const RetrievalPage = ({ onBack }) => {
         onSuccess={handleAddSuccess}
       />
 
-      {/* Add Note Modal */}
+{/* Add Note Modal */}
       {noteModal && (
         <div className="modal-overlay" onClick={() => setNoteModal(null)}>
           <div className="note-modal" onClick={e => e.stopPropagation()}>
@@ -530,12 +622,46 @@ const RetrievalPage = ({ onBack }) => {
               <button className="btn btn-secondary" onClick={() => setNoteModal(null)}>
                 Cancel
               </button>
-              <button 
-                className="btn btn-primary" 
+              <button
+                className="btn btn-primary"
                 onClick={submitNote}
                 disabled={!noteText.trim()}
               >
                 Add Note
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Date Picker Modal for Scheduled Dropoff */}
+      {datePickerModal && (
+        <div className="modal-overlay" onClick={() => setDatePickerModal(null)}>
+          <div className="date-picker-modal" onClick={e => e.stopPropagation()}>
+            <h3>
+              <FontAwesomeIcon icon={faCalendarAlt} style={{ marginRight: '0.5rem', color: '#2196F3' }} />
+              Schedule Dropoff
+            </h3>
+            <p className="modal-subtitle">Set the dropoff date for {datePickerModal.StaffName}</p>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="date-input"
+              min={new Date().toISOString().split('T')[0]}
+              autoFocus
+            />
+            <div className="note-modal-actions">
+              <button className="btn btn-secondary" onClick={() => setDatePickerModal(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={submitDropoffDate}
+                disabled={!selectedDate}
+              >
+                <FontAwesomeIcon icon={faCalendarAlt} />
+                Set Date
               </button>
             </div>
           </div>

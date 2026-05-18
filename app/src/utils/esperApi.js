@@ -1,25 +1,30 @@
 // Esper API Configuration
-const ESPER_API_KEY = import.meta.env.VITE_ESPER_API_KEY;
+//
+// All Esper API calls are proxied through the `worker-esper` Cloudflare Worker
+// so the Esper bearer token never leaves the server side.
+//
+// VITE_ESPER_BASE points at the worker URL (e.g.
+// https://worker-esper.support-1e5.workers.dev). The worker's CORS allow-list
+// includes both the production subdomain and http://localhost:5173, so the
+// same URL works in dev and prod. The fallback `/esper-api` is only used if
+// the env var is missing (treat that as a misconfiguration).
 const ESPER_ENTERPRISE_ID = import.meta.env.VITE_ESPER_ENTERPRISE_ID;
-
-// Use proxy in development to avoid CORS issues
-// In production, you'd need a backend proxy or serverless function
-const ESPER_BASE_URL = '/esper-api';
+const ESPER_BASE_URL = import.meta.env.VITE_ESPER_BASE || '/esper-api';
 
 // Device name prefix for Wellbound devices
 const DEVICE_NAME_PREFIX = 'ESR-NNV-';
 
 /**
- * Make authenticated request to Esper API
+ * Make request to Esper API via the worker proxy.
+ * The worker injects the Authorization header — never include it here.
  */
 async function esperRequest(endpoint, options = {}) {
   const url = `${ESPER_BASE_URL}${endpoint}`;
-  
+
   try {
     const response = await fetch(url, {
       ...options,
       headers: {
-        'Authorization': `Bearer ${ESPER_API_KEY}`,
         'Content-Type': 'application/json',
         ...options.headers,
       },
@@ -154,6 +159,55 @@ export async function getDeviceApps(deviceId) {
     console.warn('Failed to get device apps:', error.message);
     return [];
   }
+}
+
+/**
+ * Get a specific app's state on a device by package name.
+ * @param {string} deviceId
+ * @param {string} packageName
+ * @returns {Object|null} App info with state, or null if not found
+ */
+export async function getAppStateOnDevice(deviceId, packageName) {
+  if (!deviceId || !packageName) return null;
+  try {
+    const endpoint = `/enterprise/${ESPER_ENTERPRISE_ID}/device/${deviceId}/app/?package_name=${encodeURIComponent(packageName)}&limit=1`;
+    const result = await esperRequest(endpoint);
+    if (result.results && result.results.length > 0) {
+      const app = result.results[0];
+      return {
+        state: app.state,
+        appName: app.app_name,
+        versionName: app.version_name,
+        isActive: app.is_active,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Batch-fetch an app's state across many devices.
+ * Processes in parallel batches for performance.
+ * @param {Array} devices - Array of {id, ...} device objects
+ * @param {string} packageName - App package name
+ * @param {function} onProgress - Optional callback(completed, total)
+ * @returns {Object} Map of deviceId -> app state info
+ */
+export async function batchGetAppStates(devices, packageName, onProgress) {
+  const results = {};
+  const batchSize = 10;
+
+  for (let i = 0; i < devices.length; i += batchSize) {
+    const batch = devices.slice(i, i + batchSize);
+    await Promise.all(batch.map(async (device) => {
+      results[device.id] = await getAppStateOnDevice(device.id, packageName);
+    }));
+    if (onProgress) onProgress(Math.min(i + batchSize, devices.length), devices.length);
+  }
+
+  return results;
 }
 
 /**
@@ -314,10 +368,12 @@ export function formatDeviceState(state) {
 }
 
 /**
- * Check if Esper API is configured
+ * Check if Esper API is configured.
+ * The API key now lives in the worker — we just need the enterprise ID and
+ * a base URL (defaults to `/esper-api` in dev).
  */
 export function isEsperConfigured() {
-  return !!(ESPER_API_KEY && ESPER_ENTERPRISE_ID);
+  return !!(ESPER_ENTERPRISE_ID && ESPER_BASE_URL);
 }
 
 /**
@@ -549,6 +605,18 @@ function getConnectivityType(device) {
 export async function getCellularDeviceReport() {
   const devices = await getAllDevices();
   
+  // Debug: log first cellular device's network fields to find phone number location
+  const firstCellular = devices.find(d => isCellularDevice(d));
+  if (firstCellular) {
+    console.log('Sample cellular device raw network fields:', {
+      networkInfo: firstCellular.networkInfo,
+      network_info: firstCellular.network_info,
+      phone_number_1: firstCellular.phone_number_1,
+      phone_number_2: firstCellular.phone_number_2,
+      allTopLevelKeys: Object.keys(firstCellular).filter(k => k.toLowerCase().includes('phone') || k.toLowerCase().includes('network') || k.toLowerCase().includes('iccid')),
+    });
+  }
+
   const cellularDevices = [];
   const wifiDevices = [];
   
@@ -572,11 +640,25 @@ export async function getCellularDeviceReport() {
       androidVersion: device.softwareInfo?.androidVersion,
       connectivityType,
       // Network details for cellular
-      imei: device.imei1 || device.networkInfo?.imei1 || null,
-      imei2: device.imei2 || device.networkInfo?.imei2 || null,
-      phoneNumber: device.networkInfo?.phoneNumber || null,
-      simOperator: device.networkInfo?.simOperatorName || device.networkInfo?.simOperator || null,
-      cellularNetworkType: device.networkInfo?.cellularNetworkType || null,
+      imei: device.imei1 || device.networkInfo?.imei1 || device.network_info?.imei1 || null,
+      imei2: device.imei2 || device.networkInfo?.imei2 || device.network_info?.imei2 || null,
+      phoneNumber:
+        device.networkInfo?.phoneNumber ||
+        device.networkInfo?.phone_number_1 ||
+        device.networkInfo?.phone_number_2 ||
+        device.network_info?.phone_number_1 ||
+        device.network_info?.phone_number_2 ||
+        device.phone_number_1 ||
+        device.phone_number_2 ||
+        null,
+      phoneNumber2:
+        device.networkInfo?.phone_number_2 ||
+        device.network_info?.phone_number_2 ||
+        device.phone_number_2 ||
+        null,
+      simOperator: device.networkInfo?.simOperatorName || device.networkInfo?.simOperator || device.network_info?.simOperatorName || null,
+      cellularNetworkType: device.networkInfo?.cellularNetworkType || device.network_info?.cellularNetworkType || null,
+      iccid: device.networkInfo?.iccid1 || device.network_info?.iccid1 || device.iccid1 || null,
       // Person info
       assignedTo: name || (personInfo?.value) || null,
       workerId: workerId,
@@ -620,8 +702,40 @@ export async function getCellularDeviceReport() {
 }
 
 /**
+ * Extract last seen date from device object - checks all possible Esper API field locations
+ */
+function extractLastSeenDate(device) {
+  // Check all possible field locations in order of reliability
+  // updated_on is typically when device last contacted the Esper server
+  const possibleFields = [
+    device.updated_on,  // Most reliable - when device record was last updated
+    device.softwareInfo?.lastHeartbeatTime,
+    device.softwareInfo?.lastSeen,
+    device.softwareInfo?.last_seen,
+    device.networkInfo?.lastSeen,
+    device.networkInfo?.last_seen,
+    device.status?.lastSeen,
+    device.status?.last_seen,
+    device.statusTime,
+    device.status_time,
+    device.last_seen,
+    device.lastSeen,
+  ];
+  
+  for (const field of possibleFields) {
+    if (field) {
+      const date = new Date(field);
+      if (!isNaN(date.getTime())) {
+        return { dateStr: field, date };
+      }
+    }
+  }
+  
+  return null;
+}
+
+/**
  * Get devices that haven't been seen in a specified number of months
- * Uses the same lastHeartbeatTime field that tracks device activity (like "over 24 hours" check)
  * @param {number} months - Number of months of inactivity (default: 5)
  * @returns {Object} Report with stale devices
  */
@@ -634,30 +748,30 @@ export async function getStaleDevices(months = 5) {
   
   const staleDevices = [];
   let devicesWithLastSeen = 0;
+  let devicesWithoutLastSeen = 0;
+  
+  // Debug: Log key fields to find lastSeen
+  if (devices.length > 0) {
+    const d = devices[0];
+    console.log('Key device fields:', {
+      updated_on: d.updated_on,
+      created_on: d.created_on,
+      provisioned_on: d.provisioned_on,
+      softwareInfo: d.softwareInfo,
+      networkInfo: d.networkInfo
+    });
+  }
   
   for (const device of devices) {
-    // Get the last seen date - check all possible field locations from Esper API
-    // Priority: lastHeartbeatTime (most reliable) > lastSeen
-    const lastSeenStr = device.softwareInfo?.lastHeartbeatTime ||
-                        device.status?.lastHeartbeatTime ||
-                        device.lastHeartbeatTime ||
-                        device.softwareInfo?.lastSeen || 
-                        device.status?.lastSeen ||
-                        device.last_seen ||
-                        device.status_time ||
-                        null;
+    const lastSeenInfo = extractLastSeenDate(device);
     
-    // Skip devices without a last seen date - we can't determine if they're stale
-    if (!lastSeenStr) {
+    // Skip devices without a last seen date
+    if (!lastSeenInfo) {
+      devicesWithoutLastSeen++;
       continue;
     }
     
-    const lastSeenDate = new Date(lastSeenStr);
-    
-    // Validate the date is valid
-    if (isNaN(lastSeenDate.getTime())) {
-      continue;
-    }
+    const { dateStr: lastSeenStr, date: lastSeenDate } = lastSeenInfo;
     
     // Skip if the date is in the future (data error)
     if (lastSeenDate > new Date()) {
@@ -706,6 +820,7 @@ export async function getStaleDevices(months = 5) {
   return {
     totalDevices: devices.length,
     devicesWithActivityData: devicesWithLastSeen,
+    devicesWithoutActivityData: devicesWithoutLastSeen,
     staleCount: staleDevices.length,
     monthsThreshold: months,
     cutoffDate: cutoffDate.toISOString(),
@@ -839,6 +954,110 @@ export async function getPointCareForDevices(deviceIds) {
   return results;
 }
 
+/**
+ * Push managed app configuration to one or more devices via Esper command API.
+ * Format matches Esper's official sample: https://github.com/esper-io/esper-api-sample-code
+ * managedAppConfigurations goes directly under custom_settings_config.
+ * @param {string[]} deviceIds - Array of device UUIDs
+ * @param {string} packageName - App package name (e.g. "com.android.chrome")
+ * @param {Object} configJson - The managed configuration JSON object
+ * @returns {Object} Command response with request ID
+ */
+export async function pushManagedAppConfig(deviceIds, packageName, configJson) {
+  if (!deviceIds || deviceIds.length === 0) {
+    throw new Error('At least one device must be selected');
+  }
+  if (!packageName) {
+    throw new Error('Package name is required');
+  }
+  if (!configJson || typeof configJson !== 'object') {
+    throw new Error('Configuration must be a valid JSON object');
+  }
+
+  const endpoint = `/v0/enterprise/${ESPER_ENTERPRISE_ID}/command/`;
+
+  const payload = {
+    command_type: 'DEVICE',
+    device_type: 'all',
+    devices: deviceIds,
+    command: 'UPDATE_DEVICE_CONFIG',
+    command_args: {
+      custom_settings_config: {
+        managedAppConfigurations: {
+          [packageName]: configJson
+        }
+      }
+    },
+    schedule: 'IMMEDIATE'
+  };
+
+  console.log('Esper command payload:', JSON.stringify(payload, null, 2));
+
+  const response = await esperRequest(endpoint, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  console.log('Esper command response:', JSON.stringify(response, null, 2));
+  return response;
+}
+
+/**
+ * Get the status of a previously issued command request.
+ * @param {string} requestId - The command request ID
+ * @returns {Object} Status details including per-device states
+ */
+export async function getCommandStatus(requestId) {
+  if (!requestId) throw new Error('Request ID is required');
+  const endpoint = `/v0/enterprise/${ESPER_ENTERPRISE_ID}/command/${requestId}/status/`;
+  return await esperRequest(endpoint);
+}
+
+/**
+ * Set the app state (SHOW/HIDE/DISABLE) on one or more devices.
+ * Uses the SET_APP_STATE command.
+ * @param {string[]} deviceIds - Array of device UUIDs
+ * @param {string} packageName - App package name (e.g. "com.android.chrome")
+ * @param {string} appState - One of: SHOW, HIDE, DISABLE, LAUNCHABLE_BUT_HIDDEN
+ * @returns {Object} Command response with request ID
+ */
+export async function setAppState(deviceIds, packageName, appState) {
+  if (!deviceIds || deviceIds.length === 0) {
+    throw new Error('At least one device must be selected');
+  }
+  if (!packageName) {
+    throw new Error('Package name is required');
+  }
+  const validStates = ['SHOW', 'HIDE', 'DISABLE', 'LAUNCHABLE_BUT_HIDDEN'];
+  if (!validStates.includes(appState)) {
+    throw new Error(`Invalid app state. Must be one of: ${validStates.join(', ')}`);
+  }
+
+  const endpoint = `/v0/enterprise/${ESPER_ENTERPRISE_ID}/command/`;
+
+  const payload = {
+    command_type: 'DEVICE',
+    device_type: 'all',
+    devices: deviceIds,
+    command: 'SET_APP_STATE',
+    command_args: {
+      app_state: appState,
+      package_name: packageName,
+    },
+    schedule: 'IMMEDIATE',
+  };
+
+  console.log('Esper SET_APP_STATE payload:', JSON.stringify(payload, null, 2));
+
+  const response = await esperRequest(endpoint, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  console.log('Esper SET_APP_STATE response:', JSON.stringify(response, null, 2));
+  return response;
+}
+
 export default {
   searchDeviceByName,
   searchDeviceByEsperCode,
@@ -857,4 +1076,9 @@ export default {
   getStaleDevices,
   getDevicesByPractice,
   getPointCareForDevices,
+  pushManagedAppConfig,
+  getCommandStatus,
+  setAppState,
+  getAppStateOnDevice,
+  batchGetAppStates,
 };
